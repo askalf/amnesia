@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>amnesia.tax — Search</title>
+  <meta name="description" content="World's fastest aggregated search engine - powered by Sprayberry Labs">
+  <meta name="robots" content="index, follow">
+  <meta property="og:title" content="amnesia.tax">
+  <meta property="og:description" content="Every engine at once. No AI. No memory.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://amnesia.tax">
+  <meta property="og:site_name" content="amnesia.tax">
+  <meta property="og:image" content="https://amnesia.tax/og.png?v=2">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="amnesia.tax — aggregated search engine">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:site" content="@claw_replay">
+  <meta name="twitter:title" content="amnesia.tax">
+  <meta name="twitter:description" content="Every engine at once. No AI. No memory.">
+  <meta name="twitter:image" content="https://amnesia.tax/og.png?v=2">
+  <meta name="twitter:image:alt" content="amnesia.tax — aggregated search engine">
+  <meta name="theme-color" content="#fafafa" id="themeColor">
+  <link rel="search" type="application/opensearchdescription+xml" title="amnesia.tax" href="/opensearch.xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%230a0a0f'/><text x='50' y='68' text-anchor='middle' font-size='56' font-family='system-ui' font-weight='700' fill='%238b5cf6'>a</text></svg>">
+  <style>
+
+    /* ==========================================
+       Theme Variables
+       ========================================== */
+
+    /* Light mode (default) */
+    :root, [data-theme="light"] {
+      --bg: #fafafa;
+      --bg-surface: rgba(99, 56, 204, 0.03);
+      --text: #1c1433;
+      --text-secondary: #4a4260;
+      --text-muted: #7a7490;
+      --text-dim: #a09cb2;
+      --accent: #7c3aed;
+      --accent-secondary: #c026d3;
+      --accent-dim: rgba(124, 58, 237, 0.06);
+      --accent-border: rgba(124, 58, 237, 0.18);
+      --accent-border-hover: rgba(124, 58, 237, 0.4);
+      --accent-glow: rgba(124, 58, 237, 0.05);
+      --accent-glow-strong: rgba(124, 58, 237, 0.12);
+      --input-bg: #ffffff;
+      --input-text: #1c1433;
+      --input-placeholder: #a09cb2;
+      --result-title: #5b21b6;
+      --result-title-hover: #7c3aed;
+      --result-url: #059669;
+      --result-snippet: #4a4260;
+      --result-engines: #7a7490;
+      --result-border: rgba(124, 58, 237, 0.12);
+      --result-border-hover: rgba(124, 58, 237, 0.4);
+      --tag-bg: rgba(124, 58, 237, 0.07);
+      --tag-border: rgba(124, 58, 237, 0.15);
+      --tag-text: #7c3aed;
+      --suggestion-bg: #ffffff;
+      --suggestion-border: rgba(124, 58, 237, 0.14);
+      --suggestion-text: #5b21b6;
+      --suggestion-hover-bg: rgba(124, 58, 237, 0.06);
+      --suggestion-hover-border: rgba(124, 58, 237, 0.3);
+      --suggestion-hover-text: #7c3aed;
+      --footer-border: rgba(124, 58, 237, 0.08);
+      --footer-text: #a09cb2;
+      --error: #dc2626;
+      --spinner-border: rgba(124, 58, 237, 0.2);
+      --spinner-top: #7c3aed;
+      --scanline-opacity: 0;
+      --noise-opacity: 0;
+      --bg-gradient-1: rgba(124, 58, 237, 0.05);
+      --bg-gradient-2: rgba(192, 38, 211, 0.04);
+      --bg-gradient-3: rgba(59, 130, 246, 0.04);
+      --toggle-bg: #e8e5f0;
+      --toggle-knob: #ffffff;
+      --toggle-icon: #f59e0b;
+    }
+
+    /* Dark mode */
+    [data-theme="dark"] {
+      --bg: #09090f;
+      --bg-surface: rgba(139, 92, 246, 0.04);
+      --text: #e4e2ee;
+      --text-secondary: #a8a4be;
+      --text-muted: #706c88;
+      --text-dim: #4e4a64;
+      --accent: #a78bfa;
+      --accent-secondary: #e879f9;
+      --accent-dim: rgba(167, 139, 250, 0.08);
+      --accent-border: rgba(167, 139, 250, 0.2);
+      --accent-border-hover: rgba(167, 139, 250, 0.45);
+      --accent-glow: rgba(167, 139, 250, 0.06);
+      --accent-glow-strong: rgba(167, 139, 250, 0.14);
+      --input-bg: rgba(167, 139, 250, 0.04);
+      --input-text: #e4e2ee;
+      --input-placeholder: #5e5a76;
+      --result-title: #c4b5fd;
+      --result-title-hover: #ddd6fe;
+      --result-url: #34d399;
+      --result-snippet: #a8a4be;
+      --result-engines: #5e5a76;
+      --result-border: rgba(167, 139, 250, 0.15);
+      --result-border-hover: rgba(167, 139, 250, 0.4);
+      --tag-bg: rgba(167, 139, 250, 0.08);
+      --tag-border: rgba(167, 139, 250, 0.15);
+      --tag-text: #a78bfa;
+      --suggestion-bg: rgba(167, 139, 250, 0.04);
+      --suggestion-border: rgba(167, 139, 250, 0.12);
+      --suggestion-text: #a8a4be;
+      --suggestion-hover-bg: rgba(167, 139, 250, 0.1);
+      --suggestion-hover-border: rgba(167, 139, 250, 0.3);
+      --suggestion-hover-text: #c4b5fd;
+      --footer-border: rgba(167, 139, 250, 0.06);
+      --footer-text: #4e4a64;
+      --error: #f87171;
+      --spinner-border: rgba(167, 139, 250, 0.2);
+      --spinner-top: #a78bfa;
+      --scanline-opacity: 1;
+      --noise-opacity: 0.35;
+      --bg-gradient-1: rgba(124, 58, 237, 0.18);
+      --bg-gradient-2: rgba(192, 38, 211, 0.1);
+      --bg-gradient-3: rgba(59, 130, 246, 0.08);
+      --toggle-bg: #1e1b2e;
+      --toggle-knob: #a78bfa;
+      --toggle-icon: #a78bfa;
+    }
+
+    /* ==========================================
+       Base
+       ========================================== */
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      font-family: 'Space Mono', monospace;
+      background: var(--bg);
+      color: var(--text);
+      transition: background 0.3s ease, color 0.3s ease;
+    }
+
+    /* Eerie animated background */
+    .bg {
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 20% 50%, var(--bg-gradient-1) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, var(--bg-gradient-2) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 90%, var(--bg-gradient-3) 0%, transparent 50%);
+      z-index: 0;
+      animation: bgDrift 20s ease-in-out infinite alternate;
+      transition: background 0.3s ease;
+    }
+
+    @keyframes bgDrift {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.7; }
+    }
+
+    /* Noise overlay — dark mode only */
+    .bg::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      opacity: var(--noise-opacity);
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    /* Scanline effect — dark mode only */
+    .bg::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.08) 2px,
+        rgba(0, 0, 0, 0.08) 4px
+      );
+      pointer-events: none;
+      z-index: 999;
+      opacity: var(--scanline-opacity);
+      transition: opacity 0.3s ease;
+    }
+
+    /* ==========================================
+       Theme Toggle
+       ========================================== */
+
+    .theme-toggle {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .toggle-switch {
+      position: relative;
+      width: 48px;
+      height: 26px;
+      background: var(--toggle-bg);
+      border-radius: 13px;
+      cursor: pointer;
+      transition: background 0.3s ease;
+      border: none;
+      padding: 0;
+    }
+
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 20px;
+      height: 20px;
+      background: var(--toggle-knob);
+      border-radius: 50%;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+
+    [data-theme="dark"] .toggle-switch::after {
+      transform: translateX(22px);
+    }
+
+    .toggle-icon {
+      font-size: 0.9rem;
+      color: var(--toggle-icon);
+      transition: color 0.3s ease;
+      user-select: none;
+    }
+
+    /* ==========================================
+       Layout
+       ========================================== */
+
+    .shell {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .shell.landing {
+      justify-content: center;
+      align-items: center;
+    }
+
+    .shell.results-mode {
+      justify-content: flex-start;
+      align-items: center;
+    }
+
+    /* ==========================================
+       Search Header
+       ========================================== */
+
+    .search-header {
+      width: 100%;
+      max-width: 680px;
+      padding: 0 1.5rem;
+      transition: all 0.3s ease;
+    }
+
+    .landing .search-header {
+      text-align: center;
+    }
+
+    .landing .search-row {
+      justify-content: center;
+    }
+
+    .results-mode .search-header {
+      padding: 1.5rem 2rem;
+      width: 100%;
+      max-width: 680px;
+      border-bottom: 1px solid var(--accent-dim);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .results-mode .search-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .logo {
+      font-size: 2.4rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      background: linear-gradient(135deg, var(--accent), var(--accent-secondary), var(--accent));
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      cursor: pointer;
+      user-select: none;
+      animation: logoShift 8s ease-in-out infinite;
+      text-transform: lowercase;
+    }
+
+    @keyframes logoShift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .landing .logo {
+      display: none;
+    }
+
+    .results-mode .logo {
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+
+    /* ==========================================
+       Search Box
+       ========================================== */
+
+    .search-box {
+      display: flex;
+      width: 100%;
+      max-width: 680px;
+      background: var(--input-bg);
+      border: 1px solid var(--accent-border);
+      border-radius: 2px;
+      overflow: hidden;
+      transition: all 0.3s ease;
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    .search-box:focus-within {
+      border-color: var(--accent-border-hover);
+      box-shadow: 0 0 30px var(--accent-glow-strong), inset 0 0 20px var(--accent-glow);
+    }
+
+    .search-box input {
+      flex: 1;
+      padding: 1rem 1.2rem;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--input-text);
+      font-size: 0.95rem;
+      font-family: 'Space Mono', monospace;
+      letter-spacing: 0.02em;
+    }
+
+    .search-box input::placeholder {
+      color: var(--input-placeholder);
+      font-style: italic;
+    }
+
+    .search-box button {
+      padding: 1rem 1.4rem;
+      background: transparent;
+      border: none;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 1rem;
+      transition: all 0.3s;
+      opacity: 0.7;
+    }
+
+    .search-box button:hover {
+      opacity: 1;
+      text-shadow: 0 0 12px var(--accent-glow-strong);
+    }
+
+    .landing .subtitle {
+      margin-top: 1.2rem;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+
+    /* ==========================================
+       Category Tabs
+       ========================================== */
+
+    .category-tabs {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 0.75rem;
+      justify-content: center;
+    }
+
+    .results-mode .category-tabs {
+      margin-bottom: 0;
+      justify-content: flex-start;
+    }
+
+    .category-tabs button {
+      padding: 0.3rem 0;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid transparent;
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      font-family: 'Space Mono', monospace;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .category-tabs button.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .category-tabs button:not(.active):hover {
+      color: var(--accent);
+    }
+
+    /* ==========================================
+       Results
+       ========================================== */
+
+    .results-area {
+      width: 100%;
+      max-width: 680px;
+      padding: 1.5rem 2rem;
+    }
+
+    .results-meta {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      letter-spacing: 0.05em;
+    }
+
+    .results-meta .engine-tag {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      background: var(--tag-bg);
+      border: 1px solid var(--tag-border);
+      border-radius: 1px;
+      font-size: 0.65rem;
+      color: var(--tag-text);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .result-item {
+      margin-bottom: 1.75rem;
+      padding-left: 0.75rem;
+      border-left: 1px solid var(--result-border);
+      transition: border-color 0.3s;
+    }
+
+    .result-item:hover {
+      border-left-color: var(--result-border-hover);
+    }
+
+    .result-item a {
+      text-decoration: none;
+    }
+
+    .result-url {
+      font-size: 0.7rem;
+      color: var(--result-url);
+      margin-bottom: 0.2rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      letter-spacing: 0.03em;
+    }
+
+    .result-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--result-title);
+      margin-bottom: 0.35rem;
+      line-height: 1.5;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    .result-title:hover {
+      color: var(--result-title-hover);
+      text-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    .result-snippet {
+      font-size: 0.82rem;
+      color: var(--result-snippet);
+      line-height: 1.7;
+    }
+
+    .result-engines {
+      margin-top: 0.3rem;
+      font-size: 0.65rem;
+      color: var(--result-engines);
+      letter-spacing: 0.05em;
+    }
+
+    /* ==========================================
+       Image Results
+       ========================================== */
+
+    .image-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 0.75rem;
+      width: 100%;
+      max-width: 680px;
+      padding: 0 2rem 1.5rem;
+    }
+
+    .image-item {
+      border: 1px solid var(--result-border);
+      border-radius: 2px;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
+
+    .image-item:hover {
+      border-color: var(--result-border-hover);
+    }
+
+    .image-item a {
+      display: block;
+      text-decoration: none;
+    }
+
+    .image-item img {
+      width: 100%;
+      height: 140px;
+      object-fit: cover;
+      display: block;
+      background: var(--accent-dim);
+    }
+
+    .image-item .image-label {
+      padding: 0.4rem 0.5rem;
+      font-size: 0.6rem;
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      letter-spacing: 0.02em;
+    }
+
+    /* ==========================================
+       Pagination
+       ========================================== */
+
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+      padding: 1rem 2rem;
+      width: 100%;
+      max-width: 680px;
+    }
+
+    .pagination button {
+      padding: 0;
+      background: transparent;
+      border: none;
+      color: var(--accent);
+      font-size: 0.7rem;
+      font-family: 'Space Mono', monospace;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.05em;
+    }
+
+    .pagination button:hover {
+      opacity: 0.7;
+    }
+
+    .pagination button:disabled {
+      opacity: 0.2;
+      cursor: default;
+    }
+
+    .pagination .page-info {
+      font-size: 0.65rem;
+      color: var(--text-dim);
+      letter-spacing: 0.05em;
+    }
+
+    /* ==========================================
+       Landing Footer
+       ========================================== */
+
+    .landing-footer {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .results-mode .landing-footer {
+      display: none;
+    }
+
+    /* ==========================================
+       Loading / Error / Empty
+       ========================================== */
+
+    .loading {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 2rem;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      letter-spacing: 0.1em;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 1px solid var(--spinner-border);
+      border-top-color: var(--spinner-top);
+      border-radius: 50%;
+      animation: spin 1.2s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-msg {
+      padding: 2rem;
+      color: var(--error);
+      font-size: 0.85rem;
+      letter-spacing: 0.03em;
+    }
+
+    .no-results {
+      padding: 2rem;
+      color: var(--text-muted);
+    }
+
+    /* ==========================================
+       Suggestions
+       ========================================== */
+
+    .suggestions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      padding: 0 2rem;
+      width: 100%;
+      max-width: 680px;
+    }
+
+    .suggestions button {
+      padding: 0.35rem 0.8rem;
+      background: var(--suggestion-bg);
+      border: 1px solid var(--suggestion-border);
+      border-radius: 1px;
+      color: var(--suggestion-text);
+      font-size: 0.75rem;
+      cursor: pointer;
+      font-family: 'Space Mono', monospace;
+      transition: all 0.3s;
+      letter-spacing: 0.03em;
+    }
+
+    .suggestions button:hover {
+      background: var(--suggestion-hover-bg);
+      border-color: var(--suggestion-hover-border);
+      color: var(--suggestion-hover-text);
+    }
+
+    /* ==========================================
+       Footer
+       ========================================== */
+
+    .footer {
+      padding: 2rem;
+      width: 100%;
+      max-width: 680px;
+      margin-top: 2rem;
+      font-size: 0.6rem;
+      color: var(--footer-text);
+      border-top: 1px solid var(--footer-border);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      text-align: center;
+    }
+
+    /* ==========================================
+       Mobile
+       ========================================== */
+
+    @media (max-width: 640px) {
+      .search-header {
+        padding: 0 1rem;
+      }
+
+      .results-mode .search-header {
+        padding: 1rem;
+        gap: 0.5rem;
+      }
+
+      .results-mode .search-row {
+        gap: 0.5rem;
+      }
+
+      .results-mode .logo {
+        font-size: 1rem;
+      }
+
+      .search-box input {
+        padding: 0.85rem 1rem;
+        font-size: 16px;
+      }
+
+      .search-box button {
+        padding: 0.85rem 1rem;
+      }
+
+      .landing .subtitle {
+        font-size: 0.6rem;
+        letter-spacing: 0.1em;
+        padding: 0 0.5rem;
+      }
+
+      .category-tabs button {
+        padding: 0.35rem 0.6rem;
+        font-size: 0.6rem;
+      }
+
+      .results-area {
+        padding: 1rem;
+      }
+
+      .result-title {
+        font-size: 0.95rem;
+      }
+
+      .result-snippet {
+        font-size: 0.8rem;
+      }
+
+      .result-url {
+        font-size: 0.65rem;
+      }
+
+      .results-meta {
+        gap: 0.5rem;
+      }
+
+      .suggestions {
+        padding: 0 1rem;
+      }
+
+      .footer {
+        padding: 1.5rem 1rem;
+      }
+
+      .theme-toggle {
+        top: 0.75rem;
+        right: 0.75rem;
+      }
+
+      .image-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        padding: 0 1rem 1rem;
+        gap: 0.5rem;
+      }
+
+      .pagination {
+        padding: 1rem;
+      }
+    }
+
+    @media (max-width: 380px) {
+      .landing .subtitle {
+        font-size: 0.55rem;
+        letter-spacing: 0.06em;
+      }
+
+      .search-box input {
+        padding: 0.75rem 0.8rem;
+      }
+    }
+
+    /* Flicker on landing */
+    .landing .search-box {
+      animation: flicker 4s ease-in-out infinite;
+    }
+
+    @keyframes flicker {
+      0%, 100% { box-shadow: 0 0 20px var(--accent-glow); }
+      50% { box-shadow: 0 0 30px var(--accent-glow-strong), 0 0 60px rgba(127, 29, 29, 0.03); }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg"></div>
+
+  <!-- Theme Toggle -->
+  <div class="theme-toggle">
+    <span class="toggle-icon" id="toggleIcon">&#9728;</span>
+    <button class="toggle-switch" id="themeToggle" aria-label="Toggle dark mode"></button>
+  </div>
+
+  <div class="shell landing" id="shell">
+    <div class="search-header" id="searchHeader">
+      <div class="category-tabs" id="categoryTabs">
+        <button class="active" data-cat="general">All</button>
+        <button data-cat="images">Images</button>
+        <button data-cat="news">News</button>
+        <button data-cat="videos">Videos</button>
+      </div>
+      <div class="search-row">
+        <div class="logo" id="logo">amnesia.tax</div>
+        <div class="search-box">
+          <input type="text" id="q" placeholder="Search the web..." autofocus autocomplete="off">
+          <button onclick="doSearch(1)" aria-label="Search">&#x25C8;</button>
+        </div>
+      </div>
+      <p class="subtitle" id="subtitle">EVERY ENGINE AT ONCE. NO AI. NO MEMORY.</p>
+    </div>
+
+    <div id="content"></div>
+    <div class="landing-footer" id="landingFooter">powered by sprayberry labs</div>
+  </div>
+
+  <script>
+    const q = document.getElementById('q');
+    const shell = document.getElementById('shell');
+    const subtitle = document.getElementById('subtitle');
+    const content = document.getElementById('content');
+    const categoryTabs = document.getElementById('categoryTabs');
+
+    let currentCategory = 'general';
+    let currentPage = 1;
+    let currentQuery = '';
+    // Theme toggle
+    const themeToggle = document.getElementById('themeToggle');
+    const toggleIcon = document.getElementById('toggleIcon');
+    const themeColorMeta = document.getElementById('themeColor');
+
+    function setTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('amnesia-theme', theme);
+      toggleIcon.innerHTML = theme === 'dark' ? '&#9790;' : '&#9728;';
+      themeColorMeta.setAttribute('content', theme === 'dark' ? '#09090f' : '#fafafa');
+    }
+
+    const savedTheme = localStorage.getItem('amnesia-theme') || 'light';
+    setTheme(savedTheme);
+
+    themeToggle.addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme');
+      setTheme(current === 'dark' ? 'light' : 'dark');
+    });
+
+    // Category tabs
+    categoryTabs.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-cat]');
+      if (!btn) return;
+      categoryTabs.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentCategory = btn.dataset.cat;
+      if (q.value.trim()) doSearch(1);
+    });
+
+    // Search on Enter
+    q.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doSearch(1);
+    });
+
+    // Load from URL params
+    const params = new URLSearchParams(location.search);
+    if (params.get('q')) {
+      q.value = params.get('q');
+      if (params.get('cat')) {
+        currentCategory = params.get('cat');
+        categoryTabs.querySelectorAll('button').forEach(b => {
+          b.classList.toggle('active', b.dataset.cat === currentCategory);
+        });
+      }
+      currentPage = parseInt(params.get('p')) || 1;
+      doSearch(currentPage);
+    }
+
+    // Logo click → home
+    document.getElementById('logo').addEventListener('click', () => {
+      shell.className = 'shell landing';
+      content.innerHTML = '';
+      q.value = '';
+      subtitle.style.display = '';
+
+      currentPage = 1;
+      currentQuery = '';
+      history.pushState(null, '', '/');
+      q.focus();
+    });
+
+    async function doSearch(page) {
+      const query = q.value.trim();
+      if (!query) return;
+
+      currentQuery = query;
+      currentPage = page || 1;
+      shell.className = 'shell results-mode';
+      subtitle.style.display = 'none';
+
+      // Update URL with query, category, and page
+      const urlParams = new URLSearchParams({ q: query });
+      if (currentCategory !== 'general') urlParams.set('cat', currentCategory);
+      if (currentPage > 1) urlParams.set('p', currentPage);
+      history.pushState(null, '', '/?' + urlParams.toString());
+
+      content.innerHTML = '<div class="loading"><div class="spinner"></div>searching...</div>';
+
+      const startTime = performance.now();
+
+      try {
+        let url = '/search?q=' + encodeURIComponent(query) + '&format=json';
+        if (currentCategory !== 'general') url += '&categories=' + currentCategory;
+        if (currentPage > 1) url += '&pageno=' + currentPage;
+
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Search failed (' + res.status + ')');
+        const data = await res.json();
+
+        const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+        renderResults(data, elapsed);
+      } catch (err) {
+        content.innerHTML = '<div class="error-msg">' + escapeHtml(err.message) + '</div>';
+      }
+    }
+
+    function renderResults(data, elapsed) {
+      const results = data.results || [];
+      const engines = new Set();
+      results.forEach(r => (r.engines || [r.engine]).forEach(e => engines.add(e)));
+
+      let html = '';
+
+      // Image grid mode
+      if (currentCategory === 'images' && results.length > 0) {
+        html += '<div class="results-area"><div class="results-meta">';
+        html += '<span>' + results.length + ' results in ' + elapsed + 's</span>';
+        Array.from(engines).sort().forEach(e => {
+          html += '<span class="engine-tag">' + escapeHtml(e) + '</span>';
+        });
+        html += '</div></div>';
+
+        html += '<div class="image-grid">';
+        const seen = new Set();
+        results.forEach(r => {
+          const imgUrl = r.img_src || r.thumbnail;
+          if (!imgUrl || seen.has(imgUrl)) return;
+          seen.add(imgUrl);
+          html += '<div class="image-item"><a href="' + escapeAttr(r.url) + '" target="_blank" rel="noopener">';
+          html += '<img src="' + escapeAttr(imgUrl) + '" alt="' + escapeAttr(r.title || '') + '" loading="lazy" onerror="this.parentElement.parentElement.style.display=\'none\'">';
+          html += '<div class="image-label">' + escapeHtml(truncate(r.title || '', 60)) + '</div>';
+          html += '</a></div>';
+        });
+        html += '</div>';
+      } else {
+        // Standard results
+        html += '<div class="results-area">';
+
+        html += '<div class="results-meta">';
+        html += '<span>' + results.length + ' results in ' + elapsed + 's</span>';
+        Array.from(engines).sort().forEach(e => {
+          html += '<span class="engine-tag">' + escapeHtml(e) + '</span>';
+        });
+        html += '</div>';
+
+        if (results.length === 0) {
+          html += '<div class="no-results">nothing here. try again.</div>';
+        }
+
+        const seen = new Set();
+        results.forEach(r => {
+          if (seen.has(r.url)) return;
+          seen.add(r.url);
+
+          let domain;
+          try { domain = new URL(r.url).hostname.replace(/^www\./, ''); } catch { domain = r.url; }
+          html += '<div class="result-item"><a href="' + escapeAttr(r.url) + '" target="_blank" rel="noopener">';
+          html += '<div class="result-url">' + escapeHtml(domain) + '</div>';
+          html += '<div class="result-title">' + escapeHtml(r.title || r.url) + '</div>';
+          html += '</a>';
+          if (r.content) html += '<div class="result-snippet">' + escapeHtml(truncate(r.content, 280)) + '</div>';
+          if (r.engines && r.engines.length > 1) {
+            html += '<div class="result-engines">' + r.engines.join(' / ') + '</div>';
+          }
+          html += '</div>';
+        });
+
+        html += '</div>';
+      }
+
+      // Suggestions
+      if (data.suggestions && data.suggestions.length > 0) {
+        html += '<div class="suggestions">';
+        data.suggestions.forEach(s => {
+          html += '<button onclick="suggestSearch(this)">' + escapeHtml(s) + '</button>';
+        });
+        html += '</div>';
+      }
+
+      // Pagination
+      html += '<div class="pagination">';
+      html += '<button onclick="doSearch(' + (currentPage - 1) + ')" ' + (currentPage <= 1 ? 'disabled' : '') + '>&larr; prev</button>';
+      html += '<span class="page-info">page ' + currentPage + '</span>';
+      html += '<button onclick="doSearch(' + (currentPage + 1) + ')" ' + (results.length === 0 ? 'disabled' : '') + '>next &rarr;</button>';
+      html += '</div>';
+
+      html += '<div class="footer">amnesia.tax &mdash; powered by Sprayberry Labs</div>';
+
+      content.innerHTML = html;
+      window.scrollTo(0, 0);
+    }
+
+    function suggestSearch(btn) {
+      q.value = btn.textContent;
+      doSearch(1);
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML;
+    }
+
+    function escapeAttr(s) {
+      return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function truncate(s, n) {
+      return (s && s.length > n) ? s.slice(0, n) + '...' : (s || '');
+    }
+
+    // Handle browser back/forward
+    window.addEventListener('popstate', () => {
+      const p = new URLSearchParams(location.search);
+      if (p.get('q')) {
+        q.value = p.get('q');
+        currentCategory = p.get('cat') || 'general';
+        categoryTabs.querySelectorAll('button').forEach(b => {
+          b.classList.toggle('active', b.dataset.cat === currentCategory);
+        });
+        doSearch(parseInt(p.get('p')) || 1);
+      } else {
+        shell.className = 'shell landing';
+        content.innerHTML = '';
+        q.value = '';
+        subtitle.style.display = '';
+  
+      }
+    });
+  </script>
+</body>
+</html>
