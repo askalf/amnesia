@@ -4,7 +4,7 @@
 
 **Search the web. Remember nothing.**
 
-Privacy-first search aggregator. No tracking, no ads, no cookies, no search history. Self-hosted via SearXNG + VPN tunnel.
+Privacy-first search aggregator. No tracking, no ads, no cookies, no search history. 150+ search engines via SearXNG + encrypted VPN tunnel. Self-hosted.
 
 [![Live](https://img.shields.io/badge/Live-amnesia.tax-10b981?style=for-the-badge)](https://amnesia.tax)
 [![License](https://img.shields.io/badge/License-MIT-10b981?style=for-the-badge)](LICENSE)
@@ -15,8 +15,9 @@ Privacy-first search aggregator. No tracking, no ads, no cookies, no search hist
 
 ## Features
 
-- **Multi-source aggregation** — pulls and merges results from multiple search engines simultaneously via SearXNG
-- **Category tabs** — All, Images, News, Videos
+- **150+ search engines** — Google, Brave, DuckDuckGo, Bing, Yahoo, Startpage, Mojeek, Qwant, and many more
+- **Multi-source aggregation** — pulls and merges results from multiple engines simultaneously
+- **Category tabs** — All, Images, News, Videos, Music, Science, Social, Files
 - **Engine tags** — see which sources contributed each result
 - **Autocomplete** — search suggestions as you type
 - **Pagination** — full result navigation
@@ -41,7 +42,7 @@ Privacy-first search aggregator. No tracking, no ads, no cookies, no search hist
 │  ▸ Result Title — source.com      [Google]   │
 │    Description of the search result...       │
 │                                              │
-│  ▸ Result Title — other.com       [Bing]     │
+│  ▸ Result Title — other.com       [Brave]    │
 │    Description of the search result...       │
 │                                              │
 │  ◂ 1  2  3  4  5 ▸        0.34s · 47 results│
@@ -63,13 +64,32 @@ docker run -d --name amnesia \
 
 ### With AskAlf (recommended)
 
-Amnesia is included in the AskAlf webhost stack with VPN tunneling, rate limiting, and Cloudflare tunnel:
+Amnesia is included in the [AskAlf](https://github.com/askalf/askalf) webhost stack with VPN tunneling, rate limiting, and Cloudflare tunnel:
 
 ```bash
 curl -fsSL https://get.askalf.org | bash
 ```
 
-The AskAlf deployment routes all SearXNG search traffic through an encrypted WireGuard VPN tunnel via Gluetun — search providers never see your real IP.
+Routes all search traffic through an encrypted WireGuard VPN tunnel — search providers never see your real IP.
+
+## Search Engines
+
+150+ engines across all categories:
+
+| Category | Engines |
+|----------|---------|
+| **Web** | Google, Brave, DuckDuckGo, Bing, Startpage, Mojeek, Qwant, Yahoo, Yandex, Yep, Ask |
+| **News** | Google News, Brave News, Bing News, DDG News, Yahoo News, Wikinews |
+| **Images** | Google, Brave, Bing, DDG, Unsplash, Pexels, Pixabay, Flickr, Pinterest |
+| **Videos** | Google, YouTube, Brave, Bing, DDG, Dailymotion, Vimeo, Rumble, Odysee |
+| **Science** | Google Scholar, arXiv, PubMed, Semantic Scholar, OpenAlex |
+| **Social** | Reddit, Lemmy, Mastodon, 9gag |
+| **Music** | Genius, Bandcamp, Soundcloud, Deezer |
+| **Dev** | GitHub, GitLab, StackOverflow, npm, PyPI, Docker Hub, HuggingFace |
+| **Files** | 1337x, Piratebay, Library Genesis, Anna's Archive |
+| **Maps** | Apple Maps, OpenStreetMap |
+
+All engines routed through VPN — search providers see the VPN exit IP, not yours.
 
 ## Architecture
 
@@ -78,7 +98,7 @@ Browser → Cloudflare Tunnel → Nginx (cache + rate limit)
                                   ↓
                               amnesia-search.html (static, 31KB)
                                   ↓ (API calls)
-                              SearXNG → Gluetun VPN → Search Engines
+                              SearXNG (150+ engines) → Gluetun VPN → Search Engines
                                   ↑
                               Redis (result cache)
 ```
@@ -86,7 +106,7 @@ Browser → Cloudflare Tunnel → Nginx (cache + rate limit)
 - **Single HTML file** — no build step, no framework, no dependencies
 - **SearXNG backend** — meta-search aggregator, no API keys needed
 - **Cloudflare Tunnel** — zero-trust access, DDoS protection
-- **Gluetun VPN** — all outbound search queries encrypted through WireGuard
+- **Gluetun VPN** — all outbound search queries encrypted through WireGuard (ProtonVPN)
 - **Nginx** — response caching (60s TTL), rate limiting, security headers
 - **Redis** — SearXNG result caching for faster repeated queries
 
@@ -107,14 +127,14 @@ Amnesia stores nothing. No accounts. No cookies. No server-side logs. The SearXN
 
 ## Stack
 
-`HTML` · `CSS` · `JavaScript` · `Nginx` · `SearXNG` · `Redis` · `Gluetun VPN` · `Cloudflare Tunnel`
+`HTML` · `CSS` · `JavaScript` · `SearXNG` · `Nginx` · `Redis` · `Gluetun VPN` · `Cloudflare Tunnel` · `ProtonVPN`
 
 ## Related
 
-- [AskAlf](https://github.com/SprayberryLabs/askalf) — autonomous AI agent fleet (includes Amnesia in the webhost stack)
+- [AskAlf](https://github.com/askalf/askalf) — self-hosted AI workforce platform (includes Amnesia in the webhost stack)
 - [SearXNG](https://github.com/searxng/searxng) — the meta-search engine that powers Amnesia
 - [Gluetun](https://github.com/qdm12/gluetun) — VPN tunnel for containerized services
 
 ## License
 
-MIT — Built by [Sprayberry Labs](https://github.com/SprayberryLabs) · Live at [amnesia.tax](https://amnesia.tax)
+MIT — [askalf.org](https://askalf.org) · Live at [amnesia.tax](https://amnesia.tax)
