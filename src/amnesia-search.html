@@ -942,7 +942,8 @@
       const startTime = performance.now();
 
       try {
-        let url = '/search?q=' + encodeURIComponent(query) + '&format=json';
+        const apiBase = window.location.hostname === 'localhost' ? '' : 'https://api.amnesia.tax';
+        let url = apiBase + '/search?q=' + encodeURIComponent(query) + '&format=json';
         if (currentCategory !== 'general') url += '&categories=' + currentCategory;
         if (currentPage > 1) url += '&pageno=' + currentPage;
 
