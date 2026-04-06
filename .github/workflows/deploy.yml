@@ -19,6 +19,9 @@ jobs:
         run: |
           mkdir -p deploy
           cp src/amnesia-search.html deploy/index.html
+          cp src/og.png deploy/og.png 2>/dev/null || true
+          cp src/robots.txt deploy/robots.txt 2>/dev/null || true
+          cp src/sitemap.xml deploy/sitemap.xml 2>/dev/null || true
 
       - name: Deploy amnesia.tax
         uses: cloudflare/wrangler-action@v3
