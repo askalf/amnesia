@@ -69,12 +69,12 @@ jobs:
           # Validate sitemap.xml if it exists
           if [ -f "src/sitemap.xml" ]; then
             python3 -c "
-            import xml.etree.ElementTree as ET
-            try:
-              ET.parse('src/sitemap.xml')
-              print('✓ sitemap.xml is valid XML')
-            except ET.ParseError as e:
-              print(f'Error: Invalid XML in sitemap.xml: {e}')
-              exit(1)
-            "
+          import xml.etree.ElementTree as ET
+          try:
+            ET.parse('src/sitemap.xml')
+            print('✓ sitemap.xml is valid XML')
+          except ET.ParseError as e:
+            print(f'Error: Invalid XML in sitemap.xml: {e}')
+            exit(1)
+          "
           fi
