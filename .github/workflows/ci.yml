@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    name: Validate HTML and Scripts
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate HTML exists
+        run: |
+          if [ ! -f "src/amnesia-search.html" ]; then
+            echo "Error: src/amnesia-search.html not found"
+            exit 1
+          fi
+          echo "✓ HTML file found"
+
+      - name: Check HTML validity
+        run: |
+          # Basic HTML structure check
+          if ! grep -q "<!DOCTYPE html>" src/amnesia-search.html; then
+            echo "Error: Missing DOCTYPE declaration"
+            exit 1
+          fi
+          if ! grep -q "<html" src/amnesia-search.html; then
+            echo "Error: Missing html tag"
+            exit 1
+          fi
+          if ! grep -q "</html>" src/amnesia-search.html; then
+            echo "Error: Missing closing html tag"
+            exit 1
+          fi
+          echo "✓ HTML structure valid"
+
+      - name: Check for scripts
+        run: |
+          # Verify scripts are present (should have search functionality)
+          if grep -q "<script" src/amnesia-search.html; then
+            echo "✓ Scripts found"
+          else
+            echo "Warning: No scripts found in HTML"
+          fi
+
+      - name: Validate static assets
+        run: |
+          # Check that required static files exist
+          if [ ! -f "src/robots.txt" ]; then
+            echo "Warning: robots.txt not found"
+          else
+            echo "✓ robots.txt found"
+          fi
+
+          if [ ! -f "src/sitemap.xml" ]; then
+            echo "Warning: sitemap.xml not found"
+          else
+            echo "✓ sitemap.xml found"
+          fi
+
+      - name: Validate XML files
+        run: |
+          # Validate sitemap.xml if it exists
+          if [ -f "src/sitemap.xml" ]; then
+            python3 -c "
+            import xml.etree.ElementTree as ET
+            try:
+              ET.parse('src/sitemap.xml')
+              print('✓ sitemap.xml is valid XML')
+            except ET.ParseError as e:
+              print(f'Error: Invalid XML in sitemap.xml: {e}')
+              exit(1)
+            "
+          fi
