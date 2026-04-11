@@ -64,7 +64,7 @@ docker run -d --name amnesia \
 
 ### With AskAlf (recommended)
 
-Amnesia is included in the [AskAlf](https://github.com/askalf/platform) webhost stack with VPN tunneling, rate limiting, and Cloudflare tunnel:
+Amnesia is included in the [AskAlf](https://askalf.org) webhost stack with VPN tunneling, rate limiting, and Cloudflare tunnel:
 
 ```bash
 curl -fsSL https://get.askalf.org | bash
@@ -131,7 +131,7 @@ Amnesia stores nothing. No accounts. No cookies. No server-side logs. The SearXN
 
 ## Related
 
-- [AskAlf](https://github.com/askalf/platform) — self-hosted AI workforce platform (includes Amnesia in the webhost stack)
+- [AskAlf](https://askalf.org) — self-hosted AI workforce platform (includes Amnesia in the webhost stack)
 - [SearXNG](https://github.com/searxng/searxng) — the meta-search engine that powers Amnesia
 - [Gluetun](https://github.com/qdm12/gluetun) — VPN tunnel for containerized services
 
