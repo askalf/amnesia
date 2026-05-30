@@ -938,7 +938,16 @@
       if (!el) {
         el = document.createElement('div');
         el.id = 'ts-widget';
-        el.style.display = 'none';
+        // Must be RENDERED, not display:none — Turnstile throws 600010 when its
+        // widget lives in a hidden div. Park it off-screen but laid-out so the
+        // challenge (and any escalated interactive modal) can still run.
+        el.style.position = 'fixed';
+        el.style.left = '0';
+        el.style.bottom = '0';
+        el.style.width = '300px';
+        el.style.height = '65px';
+        el.style.zIndex = '2147483647';
+        el.style.transform = 'translateY(200%)';   // off-screen until needed
         document.body.appendChild(el);
       }
       return el;
