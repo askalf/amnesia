@@ -1,0 +1,27 @@
+# SearXNG limiter — public instance tuning
+#
+# The amnesia.tax front-end is a static SPA on a *different* origin that calls
+# /search?...&format=json directly via fetch(). That means:
+#   * link_token MUST be off — there is no prior HTML page-load to mint a token,
+#     so a link-token requirement would 403 every real search.
+#   * Per-IP rate limiting is delegated to Cloudflare's edge, which sees the
+#     true client IP. Requests reaching SearXNG arrive via Cloudflare ->
+#     cloudflared, so SearXNG's own view of the client IP is the forwarded one.
+#
+# real_ip.x_for = 2 accounts for the CF edge + cloudflared hops. VERIFY after
+# deploy (see DEPLOY.md "real IP" step): if SearXNG attributes all traffic to a
+# single proxy IP, the IP limiter will collectively throttle everyone — tune
+# x_for or lean entirely on the Cloudflare rate-limit rule.
+
+[real_ip]
+x_for = 2
+ipv4_prefix = 32
+ipv6_prefix = 56
+
+[botdetection.ip_limit]
+# Allow direct cross-origin JSON API calls from the SPA.
+link_token = false
+
+[botdetection.ip_lists]
+pass_ip = []
+block_ip = []
