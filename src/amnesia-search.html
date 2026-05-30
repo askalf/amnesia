@@ -1004,8 +1004,9 @@
         // Solve Turnstile (skipped for local dev where apiBase is same-origin).
         const headers = {};
         if (apiBase) {
-          const token = await getTurnstileToken();
-          if (!token) throw new Error('Verification failed — please retry');
+          let token = '';
+          try { token = await getTurnstileToken(); } catch (e) { token = ''; }
+          if (!token) throw new Error('Verification failed — please retry in a moment');
           headers['cf-turnstile-token'] = token;
         }
 
