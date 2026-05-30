@@ -28,6 +28,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%230a0a0f'/><text x='50' y='68' text-anchor='middle' font-size='56' font-family='system-ui' font-weight='700' fill='%238b5cf6'>a</text></svg>">
+  <!-- Cloudflare Turnstile: the API gate (api.amnesia.tax) requires a token so the
+       zone's bot protection can stay on while cross-origin fetch() still works. -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
   <style>
 
     /* ==========================================
@@ -922,6 +925,57 @@
       q.focus();
     });
 
+    // --- Cloudflare Turnstile -------------------------------------------------
+    // The API gate (api.amnesia.tax) requires a fresh Turnstile token per search
+    // so the zone's bot protection can stay on while cross-origin fetch() works.
+    // Site key is injected at deploy time (see worker/DEPLOY.md). The widget is
+    // rendered invisibly on demand and resolves a token.
+    const TURNSTILE_SITE_KEY = '__TURNSTILE_SITE_KEY__';
+    let _tsWidgetId = null;
+
+    function _ensureTurnstileContainer() {
+      let el = document.getElementById('ts-widget');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'ts-widget';
+        el.style.display = 'none';
+        document.body.appendChild(el);
+      }
+      return el;
+    }
+
+    function getTurnstileToken() {
+      return new Promise((resolve) => {
+        if (typeof turnstile === 'undefined' || !TURNSTILE_SITE_KEY || TURNSTILE_SITE_KEY.indexOf('__') === 0) {
+          // Turnstile not configured/loaded — resolve empty so the API returns a
+          // clear 401 rather than the request hanging.
+          resolve('');
+          return;
+        }
+        const container = _ensureTurnstileContainer();
+        try {
+          if (_tsWidgetId === null) {
+            _tsWidgetId = turnstile.render(container, {
+              sitekey: TURNSTILE_SITE_KEY,
+              size: 'invisible',
+              callback: (token) => resolve(token),
+              'error-callback': () => resolve(''),
+              'timeout-callback': () => resolve(''),
+            });
+            turnstile.execute(_tsWidgetId);
+          } else {
+            turnstile.reset(_tsWidgetId);
+            turnstile.execute(_tsWidgetId, {
+              callback: (token) => resolve(token),
+              'error-callback': () => resolve(''),
+            });
+          }
+        } catch (e) {
+          resolve('');
+        }
+      });
+    }
+
     async function doSearch(page) {
       const query = q.value.trim();
       if (!query) return;
@@ -947,7 +1001,15 @@
         if (currentCategory !== 'general') url += '&categories=' + currentCategory;
         if (currentPage > 1) url += '&pageno=' + currentPage;
 
-        const res = await fetch(url);
+        // Solve Turnstile (skipped for local dev where apiBase is same-origin).
+        const headers = {};
+        if (apiBase) {
+          const token = await getTurnstileToken();
+          if (!token) throw new Error('Verification failed — please retry');
+          headers['cf-turnstile-token'] = token;
+        }
+
+        const res = await fetch(url, { headers });
         if (!res.ok) throw new Error('Search failed (' + res.status + ')');
         const data = await res.json();
 

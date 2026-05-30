@@ -1,0 +1,30 @@
+# amnesia API gate Worker — fronts api.amnesia.tax, verifies Turnstile, proxies SearXNG.
+#
+# Deploy:  cd worker && wrangler deploy
+# Secrets (set once, NOT in this file):
+#   wrangler secret put TURNSTILE_SECRET
+#   wrangler secret put ORIGIN_SECRET
+#
+# The route binds api.amnesia.tax/* to this Worker. That means api.amnesia.tax
+# must be a DNS record in the zone (it is — proxied CNAME to the tunnel) AND the
+# Worker route takes precedence for matching requests. See worker/DEPLOY.md.
+
+name = "amnesia-api-gate"
+main = "src/index.js"
+compatibility_date = "2026-05-01"
+workers_dev = false
+
+account_id = "dfdf9f7ec6fe9f816bd9cdc6f2469eca"
+
+# Public vars (non-secret)
+[vars]
+ALLOWED_ORIGIN = "https://amnesia.tax"
+# The SearXNG origin the Worker proxies to — a SEPARATE tunnel hostname that is
+# NOT the public api host and NOT challenge-gated against the Worker. Provision
+# per worker/DEPLOY.md (cloudflared ingress search-origin.amnesia.tax -> :8081).
+ORIGIN_HOST = "https://search-origin.amnesia.tax"
+
+# Route: take over api.amnesia.tax for the Worker.
+[[routes]]
+pattern = "api.amnesia.tax/*"
+zone_name = "amnesia.tax"
