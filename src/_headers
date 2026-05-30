@@ -1,0 +1,17 @@
+# Cloudflare Pages headers for amnesia.tax (front-end).
+# Versioned here so security headers deploy with the site (no CF Transform Rule
+# / token needed). CSP is matched to exactly what the SPA loads:
+#   - Turnstile script + iframe : https://challenges.cloudflare.com
+#   - Google Fonts              : https://fonts.googleapis.com (css) + https://fonts.gstatic.com (font files)
+#   - the search API fetch       : https://api.amnesia.tax
+#   - inline <style> + <script>  : 'unsafe-inline' (single-file app; no per-request nonce on static Pages)
+#   - favicon (data: svg) + og   : data: / 'self'
+#   - result thumbnails          : https: (image_proxy on the backend keeps the user's IP off result sites)
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.amnesia.tax; frame-src https://challenges.cloudflare.com; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests
