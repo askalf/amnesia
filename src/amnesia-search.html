@@ -1010,8 +1010,15 @@
         }
 
         const res = await fetch(url, { headers });
-        if (!res.ok) throw new Error('Search failed (' + res.status + ')');
-        const data = await res.json();
+        const data = await res.json().catch(() => null);
+        // The API gate signals verification problems with an {error} body.
+        if (data && data.error) {
+          const msg = (data.error === 'turnstile_required' || data.error === 'turnstile_failed')
+            ? 'Verification failed — please try your search again.'
+            : 'Search error: ' + data.error;
+          throw new Error(msg);
+        }
+        if (!res.ok || !data) throw new Error('Search failed (' + res.status + ')');
 
         const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
         renderResults(data, elapsed);
