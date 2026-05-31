@@ -863,6 +863,14 @@
     let currentCategory = 'general';
     let currentPage = 1;
     let currentQuery = '';
+
+    // API origin: same-origin in local dev, the Turnstile-gated worker in prod.
+    // MUST stay above the page-load warmSession() call below — as a `const` it sits
+    // in its temporal dead zone until this line runs, so a lower declaration throws
+    // "Cannot access 'API_BASE' before initialization" the moment warmSession() reads
+    // it, halting the whole script. Regression guard: keep this here.
+    const API_BASE = window.location.hostname === 'localhost' ? '' : 'https://api.amnesia.tax';
+
     // Theme toggle
     const themeToggle = document.getElementById('themeToggle');
     const toggleIcon = document.getElementById('toggleIcon');
@@ -993,8 +1001,6 @@
       }).finally(() => { _tokenInFlight = null; });
       return _tokenInFlight;
     }
-
-    const API_BASE = window.location.hostname === 'localhost' ? '' : 'https://api.amnesia.tax';
 
     // Establish the signed session cookie ONCE so later searches + pagination
     // skip the ~9s Turnstile solve. Pre-warmed on page load; `_warmPromise` lets
