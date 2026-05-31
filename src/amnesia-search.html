@@ -985,6 +985,41 @@
       });
     }
 
+    const API_BASE = window.location.hostname === 'localhost' ? '' : 'https://api.amnesia.tax';
+
+    // Establish the signed session cookie ONCE so later searches + pagination
+    // skip the ~9s Turnstile solve. Fired on page load (pre-warm) and as the
+    // retry path when the cookie has expired.
+    async function warmSession() {
+      if (!API_BASE) return true;            // local dev = same-origin, no gate
+      let token = '';
+      try { token = await getTurnstileToken(); } catch (e) { token = ''; }
+      if (!token) return false;
+      try {
+        const r = await fetch(API_BASE + '/session', {
+          headers: { 'cf-turnstile-token': token },
+          credentials: 'include',
+        });
+        return r.ok;
+      } catch (e) { return false; }
+    }
+
+    // GET the API on the session cookie. On 401 (missing/expired cookie) solve a
+    // fresh Turnstile token, retry once; that response re-sets the cookie.
+    async function apiGet(path) {
+      if (!API_BASE) return fetch(path);     // local dev same-origin
+      const url = API_BASE + path;
+      let res = await fetch(url, { credentials: 'include' });
+      if (res.status === 401) {
+        let token = '';
+        try { token = await getTurnstileToken(); } catch (e) { token = ''; }
+        if (token) {
+          res = await fetch(url, { headers: { 'cf-turnstile-token': token }, credentials: 'include' });
+        }
+      }
+      return res;
+    }
+
     async function doSearch(page) {
       const query = q.value.trim();
       if (!query) return;
@@ -1005,21 +1040,13 @@
       const startTime = performance.now();
 
       try {
-        const apiBase = window.location.hostname === 'localhost' ? '' : 'https://api.amnesia.tax';
-        let url = apiBase + '/search?q=' + encodeURIComponent(query) + '&format=json';
-        if (currentCategory !== 'general') url += '&categories=' + currentCategory;
-        if (currentPage > 1) url += '&pageno=' + currentPage;
+        let path = '/search?q=' + encodeURIComponent(query) + '&format=json';
+        if (currentCategory !== 'general') path += '&categories=' + currentCategory;
+        if (currentPage > 1) path += '&pageno=' + currentPage;
 
-        // Solve Turnstile (skipped for local dev where apiBase is same-origin).
-        const headers = {};
-        if (apiBase) {
-          let token = '';
-          try { token = await getTurnstileToken(); } catch (e) { token = ''; }
-          if (!token) throw new Error('Verification failed — please retry in a moment');
-          headers['cf-turnstile-token'] = token;
-        }
-
-        const res = await fetch(url, { headers });
+        // Uses the session cookie; only solves Turnstile if the cookie is
+        // missing/expired (first visit or after ~30min).
+        const res = await apiGet(path);
         const data = await res.json().catch(() => null);
         // The API gate signals verification problems with an {error} body.
         if (data && data.error) {
