@@ -1,0 +1,15 @@
+# Add this ingress rule to the Hetzner host's cloudflared config
+# (/etc/cloudflared/config.yml) ABOVE the final `service: http_status:404`
+# catch-all, then `systemctl restart cloudflared`.
+#
+# The api.amnesia.tax hostname rides the existing `askalf-platform` tunnel
+# (a tunnel can serve hostnames across multiple zones in the same CF account).
+# DNS: a proxied CNAME api.amnesia.tax -> <tunnel-id>.cfargotunnel.com, created
+# via `cloudflared tunnel route dns askalf-platform api.amnesia.tax`.
+
+  - hostname: api.amnesia.tax
+    service: http://localhost:8081
+    originRequest:
+      connectTimeout: 30s
+      tcpKeepAlive: 30s
+      keepAliveTimeout: 90s
