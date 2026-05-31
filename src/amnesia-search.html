@@ -906,25 +906,6 @@
       if (e.key === 'Enter') doSearch(1);
     });
 
-    // Pre-warm the session cookie in the background on page load so the first
-    // real search skips the ~9s Turnstile solve. Fire-and-forget; if it fails,
-    // the first search falls back to solving a token inline.
-    warmSession().catch(() => {});
-
-    // Load from URL params
-    const params = new URLSearchParams(location.search);
-    if (params.get('q')) {
-      q.value = params.get('q');
-      if (params.get('cat')) {
-        currentCategory = params.get('cat');
-        categoryTabs.querySelectorAll('button').forEach(b => {
-          b.classList.toggle('active', b.dataset.cat === currentCategory);
-        });
-      }
-      currentPage = parseInt(params.get('p')) || 1;
-      doSearch(currentPage);
-    }
-
     // Logo click → home
     document.getElementById('logo').addEventListener('click', () => {
       shell.className = 'shell landing';
@@ -1209,6 +1190,26 @@
   
       }
     });
+
+    // Page-load init — pre-warm the session cookie, then run any URL-param search.
+    // Placed at the BOTTOM, after every declaration, so these calls never read a
+    // const/let (API_BASE, _warmPromise, _tokenInFlight, TURNSTILE_SITE_KEY, …) while
+    // it is still in its temporal dead zone. Hoisting this above those declarations
+    // reintroduces "Cannot access X before initialization" and halts the whole script.
+    warmSession().catch(() => {});
+
+    const params = new URLSearchParams(location.search);
+    if (params.get('q')) {
+      q.value = params.get('q');
+      if (params.get('cat')) {
+        currentCategory = params.get('cat');
+        categoryTabs.querySelectorAll('button').forEach(b => {
+          b.classList.toggle('active', b.dataset.cat === currentCategory);
+        });
+      }
+      currentPage = parseInt(params.get('p')) || 1;
+      doSearch(currentPage);
+    }
   </script>
 </body>
 </html>
