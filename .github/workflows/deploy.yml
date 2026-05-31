@@ -25,7 +25,7 @@ jobs:
           cp src/_headers deploy/_headers 2>/dev/null || true
 
       - name: Deploy amnesia.tax
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
