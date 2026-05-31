@@ -2,8 +2,9 @@
 #
 # Deploy:  cd worker && wrangler deploy
 # Secrets (set once, NOT in this file):
-#   wrangler secret put TURNSTILE_SECRET
-#   wrangler secret put ORIGIN_SECRET
+#   wrangler secret put TURNSTILE_SECRET   # Turnstile secret key (siteverify)
+#   wrangler secret put ORIGIN_SECRET      # shared header to reach the origin
+#   wrangler secret put SESSION_SECRET     # HMAC key for the session cookie (openssl rand -hex 32)
 #
 # The route binds api.amnesia.tax/* to this Worker. That means api.amnesia.tax
 # must be a DNS record in the zone (it is — proxied CNAME to the tunnel) AND the
@@ -23,6 +24,8 @@ ALLOWED_ORIGIN = "https://amnesia.tax"
 # NOT the public api host and NOT challenge-gated against the Worker. Provision
 # per worker/DEPLOY.md (cloudflared ingress search-origin.amnesia.tax -> :8081).
 ORIGIN_HOST = "https://search-origin.amnesia.tax"
+# Session cookie lifetime in seconds (Turnstile solved once, then skipped).
+SESSION_TTL = "1800"
 
 # Route: take over api.amnesia.tax for the Worker.
 [[routes]]
