@@ -28,6 +28,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%230a0a0f'/><text x='50' y='68' text-anchor='middle' font-size='56' font-family='system-ui' font-weight='700' fill='%238b5cf6'>a</text></svg>">
+  <!-- Cloudflare Turnstile: the API gate (api.amnesia.tax) requires a token so the
+       zone's bot protection can stay on while cross-origin fetch() still works. -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
   <style>
 
     /* ==========================================
@@ -895,6 +898,11 @@
       if (e.key === 'Enter') doSearch(1);
     });
 
+    // Pre-warm the session cookie in the background on page load so the first
+    // real search skips the ~9s Turnstile solve. Fire-and-forget; if it fails,
+    // the first search falls back to solving a token inline.
+    warmSession().catch(() => {});
+
     // Load from URL params
     const params = new URLSearchParams(location.search);
     if (params.get('q')) {
@@ -922,6 +930,112 @@
       q.focus();
     });
 
+    // --- Cloudflare Turnstile -------------------------------------------------
+    // The API gate (api.amnesia.tax) requires a fresh Turnstile token per search
+    // so the zone's bot protection can stay on while cross-origin fetch() works.
+    // Site key is injected at deploy time (see worker/DEPLOY.md). The widget is
+    // rendered invisibly on demand and resolves a token.
+    const TURNSTILE_SITE_KEY = '0x4AAAAAADaFA0frmSckU_jp';
+    let _tsWidgetId = null;
+
+    function _ensureTurnstileContainer() {
+      let el = document.getElementById('ts-widget');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'ts-widget';
+        // Must be RENDERED, not display:none — Turnstile throws 600010 when its
+        // widget lives in a hidden div. Park it off-screen but laid-out so the
+        // challenge (and any escalated interactive modal) can still run.
+        el.style.position = 'fixed';
+        el.style.left = '0';
+        el.style.bottom = '0';
+        el.style.width = '300px';
+        el.style.height = '65px';
+        el.style.zIndex = '2147483647';
+        el.style.transform = 'translateY(200%)';   // off-screen until needed
+        document.body.appendChild(el);
+      }
+      return el;
+    }
+
+    // Single-flight: the invisible widget runs one execute() at a time (a second
+    // concurrent call throws "already executing"). Share one in-flight promise.
+    let _tokenInFlight = null;
+    function getTurnstileToken() {
+      if (_tokenInFlight) return _tokenInFlight;
+      _tokenInFlight = new Promise((resolve) => {
+        if (typeof turnstile === 'undefined' || !TURNSTILE_SITE_KEY || TURNSTILE_SITE_KEY.indexOf('__') === 0) {
+          resolve('');
+          return;
+        }
+        const container = _ensureTurnstileContainer();
+        const done = (v) => resolve(v);
+        try {
+          if (_tsWidgetId === null) {
+            _tsWidgetId = turnstile.render(container, {
+              sitekey: TURNSTILE_SITE_KEY,
+              size: 'invisible',
+              callback: done,
+              'error-callback': () => done(''),
+              'timeout-callback': () => done(''),
+            });
+            turnstile.execute(_tsWidgetId);
+          } else {
+            turnstile.reset(_tsWidgetId);
+            turnstile.execute(_tsWidgetId, {
+              callback: done,
+              'error-callback': () => done(''),
+            });
+          }
+        } catch (e) {
+          resolve('');
+        }
+      }).finally(() => { _tokenInFlight = null; });
+      return _tokenInFlight;
+    }
+
+    const API_BASE = window.location.hostname === 'localhost' ? '' : 'https://api.amnesia.tax';
+
+    // Establish the signed session cookie ONCE so later searches + pagination
+    // skip the ~9s Turnstile solve. Pre-warmed on page load; `_warmPromise` lets
+    // the first search await it instead of racing it for a second token.
+    let _warmPromise = null;
+    function warmSession() {
+      if (!API_BASE) return Promise.resolve(true);   // local dev = same-origin
+      if (_warmPromise) return _warmPromise;
+      _warmPromise = (async () => {
+        let token = '';
+        try { token = await getTurnstileToken(); } catch (e) { token = ''; }
+        if (!token) return false;
+        try {
+          const r = await fetch(API_BASE + '/session', {
+            headers: { 'cf-turnstile-token': token },
+            credentials: 'include',
+          });
+          return r.ok;
+        } catch (e) { return false; }
+      })();
+      return _warmPromise;
+    }
+
+    // GET the API on the session cookie. Awaits any in-flight warm-up first so we
+    // use the cookie instead of racing for a token. On 401 (no/expired cookie)
+    // solve a fresh token, retry once; that response re-sets the cookie.
+    async function apiGet(path) {
+      if (!API_BASE) return fetch(path);     // local dev same-origin
+      if (_warmPromise) { try { await _warmPromise; } catch (e) {} }
+      const url = API_BASE + path;
+      let res = await fetch(url, { credentials: 'include' });
+      if (res.status === 401) {
+        let token = '';
+        try { token = await getTurnstileToken(); } catch (e) { token = ''; }
+        if (token) {
+          res = await fetch(url, { headers: { 'cf-turnstile-token': token }, credentials: 'include' });
+        }
+      }
+      return res;
+    }
+
     async function doSearch(page) {
       const query = q.value.trim();
       if (!query) return;
@@ -942,14 +1056,22 @@
       const startTime = performance.now();
 
       try {
-        const apiBase = window.location.hostname === 'localhost' ? '' : 'https://api.amnesia.tax';
-        let url = apiBase + '/search?q=' + encodeURIComponent(query) + '&format=json';
-        if (currentCategory !== 'general') url += '&categories=' + currentCategory;
-        if (currentPage > 1) url += '&pageno=' + currentPage;
+        let path = '/search?q=' + encodeURIComponent(query) + '&format=json';
+        if (currentCategory !== 'general') path += '&categories=' + currentCategory;
+        if (currentPage > 1) path += '&pageno=' + currentPage;
 
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('Search failed (' + res.status + ')');
-        const data = await res.json();
+        // Uses the session cookie; only solves Turnstile if the cookie is
+        // missing/expired (first visit or after ~30min).
+        const res = await apiGet(path);
+        const data = await res.json().catch(() => null);
+        // The API gate signals verification problems with an {error} body.
+        if (data && data.error) {
+          const msg = (data.error === 'turnstile_required' || data.error === 'turnstile_failed')
+            ? 'Verification failed — please try your search again.'
+            : 'Search error: ' + data.error;
+          throw new Error(msg);
+        }
+        if (!res.ok || !data) throw new Error('Search failed (' + res.status + ')');
 
         const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
         renderResults(data, elapsed);
