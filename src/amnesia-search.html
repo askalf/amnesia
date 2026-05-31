@@ -898,6 +898,11 @@
       if (e.key === 'Enter') doSearch(1);
     });
 
+    // Pre-warm the session cookie in the background on page load so the first
+    // real search skips the ~9s Turnstile solve. Fire-and-forget; if it fails,
+    // the first search falls back to solving a token inline.
+    warmSession().catch(() => {});
+
     // Load from URL params
     const params = new URLSearchParams(location.search);
     if (params.get('q')) {
