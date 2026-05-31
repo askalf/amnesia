@@ -13,7 +13,7 @@ jobs:
   deploy:
     runs-on: [self-hosted, amnesia]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Prepare deploy directory
         run: |
