@@ -26,6 +26,10 @@ ALLOWED_ORIGIN = "https://amnesia.tax"
 ORIGIN_HOST = "https://search-origin.amnesia.tax"
 # Session cookie lifetime in seconds (Turnstile solved once, then skipped).
 SESSION_TTL = "1800"
+# Egress IP(s) of the trusted front-end-verification bridge (the platform box).
+# Requests from these IPs skip Turnstile — the headless bridge can't solve it
+# from a datacenter IP. Comma-separated; not a secret. Empty disables the bypass.
+BRIDGE_IPS = "178.104.181.103"
 
 # Route: take over api.amnesia.tax for the Worker.
 [[routes]]

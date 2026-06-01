@@ -72,14 +72,25 @@ export default {
       return json({ error: "not_found" }, 404, cors());
     }
 
-    // --- Authorize: existing cookie, else a fresh Turnstile token ----------
+    // --- Authorize: trusted-bridge bypass, else session cookie, else token --
     let authorized = false;
     let issueCookie = false;
 
+    // Trusted bridge bypass. The headless front-end-verification bridge runs on
+    // the platform box and can't solve Turnstile from that datacenter IP. Allow
+    // requests from the box's egress IP(s) to reach /search without a token so
+    // internal front-end verification works. BRIDGE_IPS is a public var (an IP is
+    // not a secret), scoped to the operator's own infra; empty = bypass disabled.
+    const clientIp = request.headers.get("cf-connecting-ip");
+    const bridgeIps = (env.BRIDGE_IPS || "").split(",").map((s) => s.trim()).filter(Boolean);
+    if (clientIp && bridgeIps.includes(clientIp)) {
+      authorized = true;
+    }
+
     const cookie = readCookie(request, COOKIE_NAME);
-    if (cookie && (await verifySession(cookie, env.SESSION_SECRET))) {
+    if (!authorized && cookie && (await verifySession(cookie, env.SESSION_SECRET))) {
       authorized = true; // valid, unexpired session — skip Turnstile
-    } else {
+    } else if (!authorized) {
       const token =
         request.headers.get("cf-turnstile-token") ||
         url.searchParams.get("cf_turnstile_token");
