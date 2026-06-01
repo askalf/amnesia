@@ -1,0 +1,34 @@
+name: Deploy API-gate Worker
+
+# Deploys the amnesia-api-gate Cloudflare Worker (worker/) — the Turnstile gate
+# in front of api.amnesia.tax. The Pages front-end is deployed separately by
+# deploy.yml; this fires only when the worker changes (or on manual dispatch),
+# so an unrelated front-end push doesn't redeploy the gate.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - '.github/workflows/deploy-worker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-worker-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, amnesia]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Deploy amnesia-api-gate worker
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          command: deploy
