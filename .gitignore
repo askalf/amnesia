@@ -7,3 +7,6 @@ dist/
 .DS_Store
 Thumbs.db
 .cache/
+
+# wrangler local cache
+.wrangler/
