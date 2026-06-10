@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Validate result/image URLs against an http(s) scheme allowlist before rendering
+  links, blocking `javascript:`/`data:` injection from poisoned upstream results.
+- Escape engine names in the results footer (the one unescaped interpolation).
+- API-gate Worker now fails closed (HTTP 500) when `SESSION_SECRET` or
+  `TURNSTILE_SECRET` is unset, instead of signing cookies with an empty key.
+- Worker rejects Turnstile tokens whose `hostname` doesn't match the site origin.
+- CI (pull_request, fork-reachable) moved off the self-hosted production runner to
+  GitHub-hosted runners; only push-to-main deploys use the self-hosted runner.
+- Pinned GitHub Actions to commit SHAs.
+
 ## [1.0.0] - 2024
 
 ### Added

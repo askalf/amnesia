@@ -13,7 +13,7 @@ jobs:
   deploy:
     runs-on: [self-hosted, amnesia]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Prepare deploy directory
         run: |
@@ -25,7 +25,7 @@ jobs:
           cp src/_headers deploy/_headers 2>/dev/null || true
 
       - name: Deploy amnesia.tax
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

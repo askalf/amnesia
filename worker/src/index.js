@@ -42,6 +42,16 @@ export default {
     const allowedOrigin = env.ALLOWED_ORIGIN || "https://amnesia.tax";
     const ttl = parseInt(env.SESSION_TTL || "1800", 10);
 
+    // Fail closed if signing/verification secrets are missing. Without
+    // SESSION_SECRET, hmac() would sign cookies with an empty key — forgeable by
+    // anyone who can read this (public) source. Never silently degrade auth.
+    if (!env.SESSION_SECRET || !env.TURNSTILE_SECRET) {
+      return json({ error: "misconfigured" }, 500, {
+        "access-control-allow-origin": allowedOrigin,
+        vary: "Origin",
+      });
+    }
+
     const cors = (extra = {}) => ({
       "access-control-allow-origin": allowedOrigin,
       "access-control-allow-methods": "GET, OPTIONS",
@@ -103,6 +113,13 @@ export default {
       }
       if (!outcome.success) {
         return json({ error: "turnstile_failed", codes: outcome["error-codes"] || [] }, 403, cors());
+      }
+      // Bind the token to our own site: reject tokens minted for any other
+      // hostname (a stolen sitekey solved on an attacker's page won't match).
+      let expectedHost = "";
+      try { expectedHost = new URL(allowedOrigin).hostname; } catch (e) {}
+      if (expectedHost && outcome.hostname && outcome.hostname !== expectedHost) {
+        return json({ error: "turnstile_hostname_mismatch" }, 403, cors());
       }
       authorized = true;
       issueCookie = true;

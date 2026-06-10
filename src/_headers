@@ -6,7 +6,10 @@
 #   - the search API fetch       : https://api.amnesia.tax
 #   - inline <style> + <script>  : 'unsafe-inline' (single-file app; no per-request nonce on static Pages)
 #   - favicon (data: svg) + og   : data: / 'self'
-#   - result thumbnails          : https: (image_proxy on the backend keeps the user's IP off result sites)
+#   - result thumbnails          : https: (image_proxy state varies by deploy; keep
+#                                   blanket https: until image_proxy is confirmed on
+#                                   live, then tighten to api.amnesia.tax — verify in
+#                                   a browser, image search breaks if mismatched)
 /*
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
   X-Content-Type-Options: nosniff

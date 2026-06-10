@@ -6,14 +6,22 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   validate:
-    runs-on: [self-hosted, amnesia]
+    # GitHub-hosted, NOT self-hosted: this job runs on pull_request, including
+    # from forks (public repo). Running untrusted fork code on the self-hosted
+    # runner — which lives on the production box — is a remote code-exec path.
+    # Keep PR-triggered CI on ephemeral GH runners; only the deploy workflows
+    # (push to main, no fork exposure) use the self-hosted runner.
+    runs-on: ubuntu-latest
     name: Validate HTML and Scripts
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Validate HTML exists
         run: |

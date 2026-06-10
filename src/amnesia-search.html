@@ -1086,10 +1086,11 @@
         html += '<div class="image-grid">';
         const seen = new Set();
         results.forEach(r => {
-          const imgUrl = r.img_src || r.thumbnail;
+          const imgUrl = safeUrl(r.img_src || r.thumbnail);
+          const linkUrl = safeUrl(r.url);
           if (!imgUrl || seen.has(imgUrl)) return;
           seen.add(imgUrl);
-          html += '<div class="image-item"><a href="' + escapeAttr(r.url) + '" target="_blank" rel="noopener">';
+          html += '<div class="image-item"><a href="' + escapeAttr(linkUrl) + '" target="_blank" rel="noopener">';
           html += '<img src="' + escapeAttr(imgUrl) + '" alt="' + escapeAttr(r.title || '') + '" loading="lazy" onerror="this.parentElement.parentElement.style.display=\'none\'">';
           html += '<div class="image-label">' + escapeHtml(truncate(r.title || '', 60)) + '</div>';
           html += '</a></div>';
@@ -1115,15 +1116,17 @@
           if (seen.has(r.url)) return;
           seen.add(r.url);
 
+          const linkUrl = safeUrl(r.url);
+          if (!linkUrl) return;   // drop results with non-http(s) URLs
           let domain;
-          try { domain = new URL(r.url).hostname.replace(/^www\./, ''); } catch { domain = r.url; }
-          html += '<div class="result-item"><a href="' + escapeAttr(r.url) + '" target="_blank" rel="noopener">';
+          try { domain = new URL(linkUrl).hostname.replace(/^www\./, ''); } catch { domain = linkUrl; }
+          html += '<div class="result-item"><a href="' + escapeAttr(linkUrl) + '" target="_blank" rel="noopener">';
           html += '<div class="result-url">' + escapeHtml(domain) + '</div>';
           html += '<div class="result-title">' + escapeHtml(r.title || r.url) + '</div>';
           html += '</a>';
           if (r.content) html += '<div class="result-snippet">' + escapeHtml(truncate(r.content, 280)) + '</div>';
           if (r.engines && r.engines.length > 1) {
-            html += '<div class="result-engines">' + r.engines.join(' / ') + '</div>';
+            html += '<div class="result-engines">' + r.engines.map(escapeHtml).join(' / ') + '</div>';
           }
           html += '</div>';
         });
@@ -1166,6 +1169,19 @@
 
     function escapeAttr(s) {
       return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // Only allow http/https URLs into an href/src. Result data comes from upstream
+    // search engines; a poisoned `javascript:`/`data:` URL would otherwise become a
+    // clickable script link that CSP 'unsafe-inline' does not block. Returns '' for
+    // anything that isn't a parseable absolute http(s) URL.
+    function safeUrl(s) {
+      try {
+        const u = new URL(s, location.origin);
+        return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : '';
+      } catch (e) {
+        return '';
+      }
     }
 
     function truncate(s, n) {
