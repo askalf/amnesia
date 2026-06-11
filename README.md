@@ -62,16 +62,6 @@ docker run -d --name amnesia \
 # pointing to your SearXNG instance
 ```
 
-### With AskAlf (recommended)
-
-Amnesia is included in the [AskAlf](https://askalf.org) webhost stack with VPN tunneling, rate limiting, and Cloudflare tunnel:
-
-```bash
-curl -fsSL https://get.askalf.org | bash
-```
-
-Routes all search traffic through an encrypted WireGuard VPN tunnel — search providers never see your real IP.
-
 ## Search Engines
 
 150+ engines across all categories:
