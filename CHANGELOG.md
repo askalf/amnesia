@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Live search suggestions: debounced autocomplete dropdown backed by the API
+  gate's `/autocompleter` endpoint (keyboard navigation, click/tap select).
+  Best-effort — rides the session cookie and never triggers Turnstile solves.
+
 ### Security
 - Validate result/image URLs against an http(s) scheme allowlist before rendering
   links, blocking `javascript:`/`data:` injection from poisoned upstream results.

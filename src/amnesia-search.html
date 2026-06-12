@@ -395,6 +395,52 @@
       text-transform: uppercase;
     }
 
+    /* ==========================================
+       Autocomplete Dropdown
+       ========================================== */
+
+    .search-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 680px;
+    }
+
+    .ac-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: var(--bg);
+      border: 1px solid var(--accent-border);
+      border-radius: 2px;
+      box-shadow: 0 12px 30px var(--accent-glow-strong), 0 4px 14px rgba(0, 0, 0, 0.18);
+      z-index: 50;
+      overflow: hidden;
+      text-align: left;
+    }
+
+    .ac-dropdown.open {
+      display: block;
+    }
+
+    .ac-item {
+      padding: 0.55rem 1.2rem;
+      font-size: 0.85rem;
+      color: var(--suggestion-text);
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .ac-item:hover,
+    .ac-item.active {
+      background: var(--suggestion-hover-bg);
+      color: var(--suggestion-hover-text);
+    }
+
 
     /* ==========================================
        Category Tabs
@@ -841,9 +887,12 @@
       </div>
       <div class="search-row">
         <div class="logo" id="logo">amnesia.tax</div>
-        <div class="search-box">
-          <input type="text" id="q" placeholder="Search the web..." autofocus autocomplete="off">
-          <button onclick="doSearch(1)" aria-label="Search">&#x25C8;</button>
+        <div class="search-wrap">
+          <div class="search-box">
+            <input type="text" id="q" placeholder="Search the web..." autofocus autocomplete="off" aria-autocomplete="list" aria-controls="acDropdown">
+            <button onclick="doSearch(1)" aria-label="Search">&#x25C8;</button>
+          </div>
+          <div class="ac-dropdown" id="acDropdown" role="listbox" aria-label="Search suggestions"></div>
         </div>
       </div>
       <p class="subtitle" id="subtitle">EVERY ENGINE AT ONCE. NO AI. NO MEMORY.</p>
@@ -901,9 +950,18 @@
       if (q.value.trim()) doSearch(1);
     });
 
-    // Search on Enter
+    // Enter searches; arrows navigate the autocomplete dropdown while it is
+    // open. (Callbacks run on user input, long after the const declarations
+    // below initialize — no TDZ hazard despite the forward references.)
     q.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') doSearch(1);
+      const acOpen = acDropdown.classList.contains('open');
+      if (acOpen && e.key === 'ArrowDown') { e.preventDefault(); acMove(1); return; }
+      if (acOpen && e.key === 'ArrowUp') { e.preventDefault(); acMove(-1); return; }
+      if (acOpen && e.key === 'Escape') { hideAc(); return; }
+      if (e.key === 'Enter') {
+        if (acOpen && acIndex >= 0 && acItems[acIndex] !== undefined) q.value = acItems[acIndex];
+        doSearch(1);
+      }
     });
 
     // Logo click → home
@@ -1023,10 +1081,100 @@
       return res;
     }
 
+    // --- Live autocomplete ----------------------------------------------------
+    // Debounced suggestions from the gate's /autocompleter endpoint (SearXNG's
+    // OpenSearch format: ["query", ["s1", ...]]). Best-effort only: it rides the
+    // pre-warmed session cookie and NEVER solves Turnstile itself — keystrokes
+    // must not trigger challenge solves, so a 401 here just means no suggestions
+    // until the page-load warm lands.
+    const acDropdown = document.getElementById('acDropdown');
+    let acItems = [];
+    let acIndex = -1;
+    let acTimer = null;
+    let acAbort = null;
+
+    function hideAc() {
+      acDropdown.classList.remove('open');
+      acDropdown.innerHTML = '';
+      acItems = [];
+      acIndex = -1;
+    }
+
+    function renderAc(list) {
+      acDropdown.innerHTML = '';
+      acItems = list;
+      acIndex = -1;
+      list.forEach((s, i) => {
+        const el = document.createElement('div');
+        el.className = 'ac-item';
+        el.setAttribute('role', 'option');
+        el.dataset.i = i;
+        el.textContent = s;   // textContent keeps engine-supplied strings inert
+        acDropdown.appendChild(el);
+      });
+      acDropdown.classList.add('open');
+    }
+
+    function acMove(dir) {
+      const n = acItems.length;
+      if (!n) return;
+      acIndex = acIndex + dir;
+      if (acIndex >= n) acIndex = -1;        // past the end wraps back to "nothing selected"
+      if (acIndex < -1) acIndex = n - 1;
+      acDropdown.querySelectorAll('.ac-item').forEach((el, i) => {
+        el.classList.toggle('active', i === acIndex);
+      });
+    }
+
+    async function fetchAc(query) {
+      if (acAbort) acAbort.abort();
+      acAbort = new AbortController();
+      const signal = acAbort.signal;
+      if (API_BASE && _warmPromise) { try { await _warmPromise; } catch (e) {} }
+      if (q.value.trim() !== query) return;   // stale by the time the warm landed
+      let data = null;
+      try {
+        const res = await fetch(API_BASE + '/autocompleter?q=' + encodeURIComponent(query), {
+          credentials: API_BASE ? 'include' : 'same-origin',
+          signal: signal,
+        });
+        if (!res.ok) { hideAc(); return; }    // 401 before warm, 5xx — stay quiet
+        data = await res.json();
+      } catch (e) { return; }                 // aborted or offline
+      if (q.value.trim() !== query) return;   // out-of-order response
+      let list = [];
+      if (Array.isArray(data)) list = Array.isArray(data[1]) ? data[1] : data;
+      list = list
+        .filter((s) => typeof s === 'string' && s.trim() && s.trim().toLowerCase() !== query.toLowerCase())
+        .slice(0, 8);
+      if (list.length === 0) { hideAc(); return; }
+      renderAc(list);
+    }
+
+    q.addEventListener('input', () => {
+      clearTimeout(acTimer);
+      const v = q.value.trim();
+      if (v.length < 2) { hideAc(); return; }
+      acTimer = setTimeout(() => { fetchAc(v); }, 250);
+    });
+
+    // mousedown (not click) so the selection wins the race against the input's blur
+    acDropdown.addEventListener('mousedown', (e) => {
+      const el = e.target.closest('.ac-item');
+      if (!el) return;
+      e.preventDefault();
+      q.value = acItems[el.dataset.i];
+      hideAc();
+      doSearch(1);
+    });
+
+    q.addEventListener('blur', () => { setTimeout(hideAc, 150); });
+
     async function doSearch(page) {
       const query = q.value.trim();
       if (!query) return;
 
+      hideAc();
       currentQuery = query;
       currentPage = page || 1;
       shell.className = 'shell results-mode';
