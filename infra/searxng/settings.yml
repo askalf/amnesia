@@ -1,13 +1,16 @@
 # SearXNG settings — PUBLIC instance behind https://api.amnesia.tax
 #
-# Hardened variant of the internal askalf search config:
-#  - limiter ENABLED (backed by amnesia-valkey) for bot/rate defense-in-depth
+# Tuned variant of the internal askalf search config:
+#  - limiter + public_instance OFF — both silently return ZERO results behind
+#    cloudflared (every request arrives from the tunnel's IP). Rate/bot defense
+#    lives at the Cloudflare edge instead. Do not re-enable without re-testing
+#    search through the tunnel.
 #  - base_url set so generated links/JSON are correct
 #  - json format KEPT (the amnesia.tax front-end calls /search?...&format=json)
 #  - all engine traffic egresses through ProtonVPN via gluetun:8888
 #
-# Cloudflare provides the primary edge hardening (rate limiting, bot-fight, WAF)
-# and the CORS response header — see infra/DEPLOY.md.
+# Cloudflare provides the primary edge hardening (Turnstile gate Worker, rate
+# limiting, WAF) and the CORS response header — see infra/DEPLOY.md.
 
 use_default_settings:
   engines:
@@ -39,9 +42,9 @@ server:
   port: 8080
   secret_key: "${SEARXNG_SECRET}"
   base_url: "https://api.amnesia.tax/"
-  limiter: true
-  public_instance: true
-  image_proxy: false
+  limiter: false
+  public_instance: false
+  image_proxy: true
   method: "GET"
   http_protocol_version: "1.1"
 
@@ -54,8 +57,8 @@ outgoing:
   request_timeout: 10.0
   max_request_timeout: 20.0
   useragent_suffix: ""
-  pool_connections: 30
-  pool_maxsize: 15
+  pool_connections: 100
+  pool_maxsize: 50
   enable_http2: true
   retries: 2
   retry_on_http_error: true
@@ -99,7 +102,7 @@ engines:
     timeout: 10.0
 
   - name: yep
-    disabled: false
+    disabled: true   # broken live (always 400s) — disabled in the 2026-05-30 tune
     weight: 2.0
     timeout: 8.0
 
@@ -119,7 +122,7 @@ engines:
     timeout: 8.0
 
   - name: ask
-    disabled: false
+    disabled: true   # broken live — disabled in the 2026-05-30 tune
     weight: 1.0
     timeout: 8.0
 
@@ -143,12 +146,12 @@ engines:
     timeout: 6.0
 
   - name: wiby
-    disabled: false
+    disabled: true   # broken live — disabled in the 2026-05-30 tune
     weight: 0.5
     timeout: 6.0
 
   - name: mwmbl
-    disabled: false
+    disabled: true   # broken live — disabled in the 2026-05-30 tune
     weight: 0.5
 
   - name: crowdview

@@ -27,7 +27,6 @@ mkdir -p /root/amnesia
 cp .env.example .env
 # fill .env:
 #   AMNESIA_SEARXNG_SECRET   = openssl rand -hex 32
-#   AMNESIA_VALKEY_PASSWORD  = openssl rand -hex 24
 #   ASKALF_NET_NAME          = <name from `docker network ls`>
 
 docker compose -f /root/amnesia/docker-compose.yml --env-file /root/amnesia/.env up -d
@@ -86,17 +85,15 @@ curl -s 'https://api.amnesia.tax/search?q=test&format=json' \
 # then load https://amnesia.tax in a browser and run a query
 ```
 
-### real-IP check (step 1 follow-up)
+### why there is no SearXNG limiter
 
-After traffic flows, confirm SearXNG sees per-client IPs, not one proxy IP:
-
-```sh
-docker logs amnesia-searxng 2>&1 | grep -i limiter | tail
-```
-
-If everyone is collectively throttled, tune `real_ip.x_for` in
-`searxng/limiter.toml` or set `server.limiter: false` and rely solely on the
-Cloudflare rate-limit rule.
+Behind cloudflared every request reaches SearXNG from the tunnel's IP, so the
+built-in limiter (and `public_instance: true`) collectively throttles everyone
+— in practice it silently returns **zero results**. Live therefore runs
+`limiter: false` / `public_instance: false` with no valkey container, and all
+rate/bot defense happens at the Cloudflare edge (Turnstile gate Worker + the
+WAF rate-limit rule from step 4, which sees true client IPs). Do not re-enable
+the limiter or re-add valkey without re-testing search through the tunnel.
 
 ---
 
