@@ -1,0 +1,80 @@
+# Weekly canary: catch a dead/expiring deploy token and a broken live site
+# BEFORE a deploy fails on them.
+#
+# Why: the repo's CLOUDFLARE_API_TOKEN has expired ~10 days after issue twice
+# (2026-06-09 and 2026-06-10 incidents) — both times the first symptom was a
+# red deploy after merge. A red canary run is a much earlier, cheaper signal.
+#
+# GitHub-hosted on purpose: scheduled runs need no repo checkout and should not
+# touch the self-hosted production runner. Free on a public repo.
+
+name: Canary
+
+on:
+  schedule:
+    - cron: '17 14 * * 1'   # Mondays 14:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-token:
+    name: Verify deploy token
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Token is active and not near expiry
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          resp=$(curl -sS --max-time 20 https://api.cloudflare.com/client/v4/user/tokens/verify \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+          ok=$(echo "$resp" | jq -r '.success')
+          status=$(echo "$resp" | jq -r '.result.status // "unknown"')
+          if [ "$ok" != "true" ] || [ "$status" != "active" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is NOT active (success=$ok status=$status) — deploys will fail. Re-issue per the recipe in infra/DEPLOY.md step 5 and update the repo secret."
+            echo "$resp" | jq '.errors // empty'
+            exit 1
+          fi
+          exp=$(echo "$resp" | jq -r '.result.expires_on // empty')
+          if [ -n "$exp" ]; then
+            exp_s=$(date -d "$exp" +%s)
+            now_s=$(date +%s)
+            days=$(( (exp_s - now_s) / 86400 ))
+            echo "Token active; expires $exp (in ${days} days)."
+            if [ "$days" -lt 14 ]; then
+              echo "::error::CLOUDFLARE_API_TOKEN expires in ${days} days — rotate it now, before deploys break."
+              exit 1
+            fi
+          else
+            echo "Token active; no expiry set."
+          fi
+
+  live-smoke:
+    name: Live site smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: amnesia.tax serves the SPA
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://amnesia.tax)
+          [ "$code" = "200" ] || { echo "::error::https://amnesia.tax returned $code (expected 200)"; exit 1; }
+          echo "amnesia.tax 200"
+
+      - name: API gate is up
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 https://api.amnesia.tax/healthz)
+          [ "$code" = "200" ] || { echo "::error::api.amnesia.tax/healthz returned $code (expected 200)"; exit 1; }
+          echo "api/healthz 200"
+
+      - name: Gate still enforces auth
+        run: |
+          set -euo pipefail
+          # No cookie, no Turnstile token: the gate must refuse, not proxy.
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 'https://api.amnesia.tax/search?q=test&format=json')
+          [ "$code" = "401" ] || { echo "::error::unauthenticated /search returned $code (expected 401) — the gate may be open or broken"; exit 1; }
+          echo "unauthenticated /search 401"
