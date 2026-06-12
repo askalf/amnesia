@@ -1,9 +1,13 @@
 # amnesia — dedicated public SearXNG backend for https://api.amnesia.tax
 #
 # Standalone stack, intentionally separate from the askalf platform stack.
-# - amnesia-searxng : public-facing SearXNG (JSON API consumed by the static
-#                     front-end at https://amnesia.tax)
-# - amnesia-valkey  : backing store for the SearXNG limiter (rate/bot control)
+# Single service: amnesia-searxng — public-facing SearXNG whose JSON API the
+# static front-end at https://amnesia.tax consumes.
+#
+# No valkey/redis: the SearXNG limiter is disabled (behind cloudflared it
+# cannot identify clients and silently returns 0 results for proxied JSON
+# requests). Per-IP rate limiting is delegated to the Cloudflare edge, which
+# sees the true client IP.
 #
 # Outbound search-engine traffic egresses through the platform's ProtonVPN
 # gluetun HTTP proxy (gluetun:8888) over the shared external `askalf-net`
@@ -13,64 +17,24 @@
 # cloudflared (systemd) routes api.amnesia.tax -> 127.0.0.1:8081.
 
 services:
-  valkey:
-    image: valkey/valkey:8-alpine
-    container_name: amnesia-valkey
-    command: >-
-      valkey-server
-      --save 30 1
-      --loglevel warning
-      --requirepass ${AMNESIA_VALKEY_PASSWORD}
-    networks:
-      - amnesia-net
-    volumes:
-      - amnesia_valkey_data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "valkey-cli -a $${AMNESIA_VALKEY_PASSWORD} ping | grep -q PONG"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 5s
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "2"
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-        reservations:
-          memory: 32M
-
   searxng:
     # Pinned to the same known-good digest the platform stack runs.
     image: searxng/searxng@sha256:1a143665b6445079d1cd5b6facdf599d22ac9c29698dd2e7d15eb9b5f5a854cc
     container_name: amnesia-searxng
-    depends_on:
-      valkey:
-        condition: service_healthy
     ports:
       # Loopback-only: the host cloudflared reaches the container here.
       - "127.0.0.1:8081:8080"
     environment:
       SEARXNG_SECRET: ${AMNESIA_SEARXNG_SECRET}
-      SEARXNG_VALKEY_URL: redis://:${AMNESIA_VALKEY_PASSWORD}@valkey:6379/0
       SEARXNG_BASE_URL: https://api.amnesia.tax/
       # Egress every engine request through the platform ProtonVPN proxy.
       HTTP_PROXY: http://gluetun:8888
       HTTPS_PROXY: http://gluetun:8888
-      NO_PROXY: localhost,127.0.0.1,valkey,amnesia-valkey
+      NO_PROXY: localhost,127.0.0.1
     volumes:
       - ./searxng:/etc/searxng:ro
       - amnesia_searxng_cache:/var/cache/searxng
     networks:
-      - amnesia-net
       - askalf-net   # external — provides DNS for gluetun:8888
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/healthz || exit 1"]
@@ -102,9 +66,6 @@ services:
           memory: 128M
 
 networks:
-  amnesia-net:
-    name: amnesia-net
-    driver: bridge
   askalf-net:
     # The platform stack's network. Confirm the real name on the host with
     # `docker network ls | grep askalf-net` and set ASKALF_NET_NAME in .env.
@@ -112,7 +73,5 @@ networks:
     name: ${ASKALF_NET_NAME:-askalf_askalf-net}
 
 volumes:
-  amnesia_valkey_data:
-    name: amnesia_valkey_data
   amnesia_searxng_cache:
     name: amnesia_searxng_cache

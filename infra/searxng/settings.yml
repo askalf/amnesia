@@ -1,13 +1,14 @@
 # SearXNG settings — PUBLIC instance behind https://api.amnesia.tax
 #
-# Hardened variant of the internal askalf search config:
-#  - limiter ENABLED (backed by amnesia-valkey) for bot/rate defense-in-depth
-#  - base_url set so generated links/JSON are correct
-#  - json format KEPT (the amnesia.tax front-end calls /search?...&format=json)
-#  - all engine traffic egresses through ProtonVPN via gluetun:8888
+# Security/perf-tuned 2026-05-30. Authoritative config (regenerated clean to
+# drop a duplicate engine + stale comments).
 #
-# Cloudflare provides the primary edge hardening (rate limiting, bot-fight, WAF)
-# and the CORS response header — see infra/DEPLOY.md.
+# Abuse control is delegated to the Cloudflare edge + the Turnstile Worker that
+# fronts api.amnesia.tax — see worker/DEPLOY.md. The SearXNG `limiter` and
+# `public_instance` are OFF: behind cloudflared SearXNG can't identify clients
+# from the forwarded IP chain and silently returns 0 results for proxied JSON
+# requests when they're on. All engine traffic egresses through ProtonVPN via
+# gluetun:8888.
 
 use_default_settings:
   engines:
@@ -20,12 +21,14 @@ general:
   privacypolicy_url: false
   donation_url: false
   contact_url: false
-  enable_metrics: false
+  enable_metrics: false        # don't expose /stats timing to the public
 
 search:
   safe_search: 0
   autocomplete: "duckduckgo"
   default_lang: "en"
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 120
   formats:
     - html
     - json
@@ -39,29 +42,37 @@ server:
   port: 8080
   secret_key: "${SEARXNG_SECRET}"
   base_url: "https://api.amnesia.tax/"
-  limiter: true
-  public_instance: true
-  image_proxy: false
+  limiter: false               # see header — Cloudflare/Worker is the gate
+  public_instance: false
+  image_proxy: true            # proxy result thumbnails so engines never see the user
   method: "GET"
   http_protocol_version: "1.1"
+  default_http_headers:
+    X-Content-Type-Options: nosniff
+    X-Download-Options: noopen
+    X-Robots-Tag: noindex, nofollow
+    Referrer-Policy: no-referrer
 
 ui:
   static_use_hash: true
   default_theme: simple
   query_in_title: true
+  infinite_scroll: false
 
 outgoing:
-  request_timeout: 10.0
-  max_request_timeout: 20.0
+  request_timeout: 8.0
+  max_request_timeout: 15.0
   useragent_suffix: ""
-  pool_connections: 30
-  pool_maxsize: 15
+  # Perf: large pools so ~40 engines query concurrently without head-of-line
+  # blocking (host: 4 CPU / ~5 GB free). keepalive reuses gluetun connections.
+  pool_connections: 100
+  pool_maxsize: 50
+  keepalive_expiry: 30.0
   enable_http2: true
-  retries: 2
+  retries: 1
   retry_on_http_error: true
   proxies:
     all://:
-      - http://gluetun:8888
       - http://gluetun:8888
 
 favicons:
@@ -76,17 +87,17 @@ favicons:
 
 engines:
   # ============================================
-  # TIER 1 — VPN-friendly, fast, reliable
+  # GENERAL — reliable through a VPN exit IP
   # ============================================
   - name: brave
     disabled: false
     weight: 3.0
-    timeout: 8.0
+    timeout: 6.0
 
   - name: bing
     disabled: false
     weight: 2.5
-    timeout: 8.0
+    timeout: 6.0
 
   - name: duckduckgo
     disabled: false
@@ -96,40 +107,30 @@ engines:
   - name: startpage
     disabled: false
     weight: 2.0
-    timeout: 10.0
-
-  - name: yep
-    disabled: false
-    weight: 2.0
     timeout: 8.0
 
   - name: yahoo
     disabled: false
     weight: 1.5
-    timeout: 8.0
+    timeout: 6.0
 
   - name: yandex
     disabled: false
-    weight: 1.5
-    timeout: 8.0
+    weight: 1.0
+    timeout: 6.0
 
   - name: presearch
     disabled: false
-    weight: 1.5
-    timeout: 8.0
-
-  - name: ask
-    disabled: false
     weight: 1.0
-    timeout: 8.0
+    timeout: 6.0
 
   # ============================================
-  # TIER 2 — Sometimes blocked by VPN exit IPs
+  # GENERAL — VPN-flaky (self-suspend on 403, low cost to keep)
   # ============================================
   - name: google
     disabled: false
     weight: 0.5
-    timeout: 6.0
+    timeout: 5.0
     use_mobile_ui: true
 
   - name: mojeek
@@ -142,22 +143,23 @@ engines:
     weight: 0.5
     timeout: 6.0
 
-  - name: wiby
-    disabled: false
-    weight: 0.5
-    timeout: 6.0
-
-  - name: mwmbl
-    disabled: false
-    weight: 0.5
-
   - name: crowdview
     disabled: false
-    weight: 0.5
+    weight: 0.3
 
   - name: searchmysite
     disabled: false
     weight: 0.3
+
+  # ---- DISABLED: permanently broken, not VPN-flaky (waste every query) ----
+  - name: ask          # returns HTTP 404 on every request
+    disabled: true
+  - name: yep          # API returns 501 Not Implemented
+    disabled: true
+  - name: mwmbl        # response parser crashes (IndexError)
+    disabled: true
+  - name: wiby         # frequently times out, near-zero useful results
+    disabled: true
 
   # ============================================
   # KNOWLEDGE
@@ -171,7 +173,7 @@ engines:
 
   - name: wolframalpha
     disabled: false
-    timeout: 10.0
+    timeout: 8.0
 
   - name: currency
     disabled: false
@@ -185,12 +187,12 @@ engines:
   - name: brave.news
     disabled: false
     weight: 2.5
-    timeout: 8.0
+    timeout: 6.0
 
   - name: bing news
     disabled: false
     weight: 2.0
-    timeout: 8.0
+    timeout: 6.0
 
   - name: duckduckgo news
     disabled: false
@@ -200,12 +202,12 @@ engines:
   - name: yahoo news
     disabled: false
     weight: 1.0
-    timeout: 8.0
+    timeout: 6.0
 
   - name: google news
     disabled: false
     weight: 0.5
-    timeout: 8.0
+    timeout: 6.0
 
   - name: wikinews
     disabled: false
@@ -268,7 +270,7 @@ engines:
   - name: google scholar
     disabled: false
     weight: 1.0
-    timeout: 10.0
+    timeout: 8.0
 
   - name: pubmed
     disabled: false
@@ -279,7 +281,7 @@ engines:
   - name: reddit
     disabled: false
     weight: 1.5
-    timeout: 8.0
+    timeout: 6.0
 
   - name: mastodon hashtags
     disabled: false
@@ -296,19 +298,19 @@ engines:
   - name: brave.images
     disabled: false
     weight: 2.0
-    timeout: 8.0
+    timeout: 6.0
 
   - name: bing images
     disabled: false
-    timeout: 8.0
+    timeout: 6.0
 
   - name: duckduckgo images
     disabled: false
-    timeout: 8.0
+    timeout: 6.0
 
   - name: unsplash
     disabled: false
-    timeout: 8.0
+    timeout: 6.0
 
   # ============================================
   # VIDEOS
@@ -316,11 +318,11 @@ engines:
   - name: brave.videos
     disabled: false
     weight: 2.0
-    timeout: 8.0
+    timeout: 6.0
 
   - name: youtube
     disabled: false
-    timeout: 8.0
+    timeout: 6.0
 
   - name: odysee
     disabled: false
