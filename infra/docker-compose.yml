@@ -1,15 +1,13 @@
 # amnesia — dedicated public SearXNG backend for https://api.amnesia.tax
 #
 # Standalone stack, intentionally separate from the askalf platform stack.
-# - amnesia-searxng : public-facing SearXNG (JSON API consumed by the static
-#                     front-end at https://amnesia.tax)
+# Single service: amnesia-searxng — public-facing SearXNG whose JSON API the
+# static front-end at https://amnesia.tax consumes.
 #
-# Single service ON PURPOSE. The original deploy carried an amnesia-valkey
-# container backing SearXNG's limiter, but the limiter silently returns zero
-# results behind cloudflared, so live runs limiter:false and valkey was
-# removed (2026-05-30). Rate/bot defense lives at the Cloudflare edge instead
-# (Turnstile gate Worker + WAF rate-limit on /search). Do not re-add valkey
-# or re-enable the limiter without re-testing search through the tunnel.
+# No valkey/redis: the SearXNG limiter is disabled (behind cloudflared it
+# cannot identify clients and silently returns 0 results for proxied JSON
+# requests). Per-IP rate limiting is delegated to the Cloudflare edge, which
+# sees the true client IP.
 #
 # Outbound search-engine traffic egresses through the platform's ProtonVPN
 # gluetun HTTP proxy (gluetun:8888) over the shared external `askalf-net`
@@ -37,7 +35,6 @@ services:
       - ./searxng:/etc/searxng:ro
       - amnesia_searxng_cache:/var/cache/searxng
     networks:
-      - amnesia-net
       - askalf-net   # external — provides DNS for gluetun:8888
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/healthz || exit 1"]
@@ -69,9 +66,6 @@ services:
           memory: 128M
 
 networks:
-  amnesia-net:
-    name: amnesia-net
-    driver: bridge
   askalf-net:
     # The platform stack's network. Confirm the real name on the host with
     # `docker network ls | grep askalf-net` and set ASKALF_NET_NAME in .env.
