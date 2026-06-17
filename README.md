@@ -128,3 +128,6 @@ Amnesia stores nothing. No accounts. No cookies. No server-side logs. The SearXN
 ## License
 
 MIT — [askalf.org](https://askalf.org) · Live at [amnesia.tax](https://amnesia.tax)
+
+---
+amnesia is by the maker of **[Own Your Stack](https://github.com/askalf)** — own your AI infrastructure instead of renting it.

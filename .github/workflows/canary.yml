@@ -1,9 +1,11 @@
-# Weekly canary: catch a dead/expiring deploy token and a broken live site
+# Daily canary: catch a dead/expiring deploy token and a broken live site
 # BEFORE a deploy fails on them.
 #
-# Why: the repo's CLOUDFLARE_API_TOKEN has expired ~10 days after issue twice
-# (2026-06-09 and 2026-06-10 incidents) — both times the first symptom was a
-# red deploy after merge. A red canary run is a much earlier, cheaper signal.
+# Why: the repo's CLOUDFLARE_API_TOKEN keeps dying from short expiry (06-09,
+# 06-10, then mid-week 06-14) — the first symptom is a red deploy after merge.
+# A red canary run is a much earlier, cheaper signal. It runs DAILY (was weekly,
+# Mondays): a Monday-only canary missed the 06-14 mid-week death entirely, and
+# daily makes the token's <14-day expiry check below an actual early warning.
 #
 # GitHub-hosted on purpose: scheduled runs need no repo checkout and should not
 # touch the self-hosted production runner. Free on a public repo.
@@ -12,7 +14,7 @@ name: Canary
 
 on:
   schedule:
-    - cron: '17 14 * * 1'   # Mondays 14:17 UTC
+    - cron: '17 14 * * *'   # daily 14:17 UTC
   workflow_dispatch:
 
 permissions:
