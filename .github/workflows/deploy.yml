@@ -29,4 +29,5 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.100.0"  # pin wrangler (was floating @latest; no package.json); 4.100.0 was live during the last good deploy 2026-06-12
           command: pages deploy deploy --project-name=amnesia-site --branch=main
