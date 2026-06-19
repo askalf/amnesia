@@ -4,7 +4,7 @@
 
 **Search the web. Remember nothing.**
 
-Privacy-first search aggregator. No tracking, no ads, no cookies, no search history. 150+ search engines via SearXNG + encrypted VPN tunnel. Self-hosted.
+Privacy-first search aggregator. No tracking, no ads, no cookies, no search history. 155+ search engines via SearXNG + encrypted VPN tunnel. Self-hosted.
 
 [![Live](https://img.shields.io/badge/Live-amnesia.tax-10b981?style=for-the-badge)](https://amnesia.tax)
 [![License](https://img.shields.io/badge/License-MIT-10b981?style=for-the-badge)](LICENSE)
@@ -15,7 +15,7 @@ Privacy-first search aggregator. No tracking, no ads, no cookies, no search hist
 
 ## Features
 
-- **150+ search engines** — Google, Brave, DuckDuckGo, Bing, Yahoo, Startpage, Mojeek, Qwant, and many more
+- **155+ search engines** — Google, Brave, DuckDuckGo, Bing, Yahoo, Startpage, Mojeek, Qwant, and many more
 - **Multi-source aggregation** — pulls and merges results from multiple engines simultaneously
 - **Category tabs** — All, Images, News, Videos, Music, Science, Social, Files
 - **Engine tags** — see which sources contributed each result
@@ -64,7 +64,7 @@ docker run -d --name amnesia \
 
 ## Search Engines
 
-150+ engines across all categories:
+155+ engines across all categories:
 
 | Category | Engines |
 |----------|---------|
@@ -88,7 +88,7 @@ Browser → Cloudflare Tunnel → Nginx (cache + rate limit)
                                   ↓
                               amnesia-search.html (static, 31KB)
                                   ↓ (API calls)
-                              SearXNG (150+ engines) → Gluetun VPN → Search Engines
+                              SearXNG (155+ engines) → Gluetun VPN → Search Engines
                                   ↑
                               Redis (result cache)
 ```
