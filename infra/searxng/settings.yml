@@ -90,12 +90,12 @@ engines:
   # GENERAL — reliable through a VPN exit IP
   # ============================================
   - name: brave
-    disabled: false
+    disabled: true   # chronic failures behind VPN - 2026-06-21
     weight: 3.0
     timeout: 6.0
 
   - name: bing
-    disabled: false
+    disabled: true   # chronic timeout+disconnect behind VPN - 2026-06-21
     weight: 2.5
     timeout: 6.0
 
@@ -110,7 +110,7 @@ engines:
     timeout: 8.0
 
   - name: yahoo
-    disabled: false
+    disabled: true   # chronic Server-disconnected behind VPN - 2026-06-21
     weight: 1.5
     timeout: 6.0
 
@@ -120,7 +120,7 @@ engines:
     timeout: 6.0
 
   - name: presearch
-    disabled: false
+    disabled: true   # chronic 403 access-denied behind VPN - 2026-06-21
     weight: 1.0
     timeout: 6.0
 
@@ -128,18 +128,18 @@ engines:
   # GENERAL — VPN-flaky (self-suspend on 403, low cost to keep)
   # ============================================
   - name: google
-    disabled: false
+    disabled: true   # blocks datacenter/VPN IPs (403) — 2026-06-20
     weight: 0.5
     timeout: 5.0
     use_mobile_ui: true
 
   - name: mojeek
-    disabled: false
+    disabled: true   # blocks datacenter/VPN IPs (403) — 2026-06-20
     weight: 0.5
     timeout: 6.0
 
   - name: qwant
-    disabled: false
+    disabled: true   # blocks datacenter/VPN IPs (403) — 2026-06-20
     weight: 0.5
     timeout: 6.0
 
@@ -172,7 +172,7 @@ engines:
     disabled: false
 
   - name: wolframalpha
-    disabled: false
+    disabled: true   # chronic timeout behind VPN — 2026-06-20
     timeout: 8.0
 
   - name: currency
@@ -205,7 +205,7 @@ engines:
     timeout: 6.0
 
   - name: google news
-    disabled: false
+    disabled: true   # blocks datacenter/VPN IPs (403) — 2026-06-20
     weight: 0.5
     timeout: 6.0
 
@@ -268,7 +268,7 @@ engines:
     disabled: false
 
   - name: google scholar
-    disabled: false
+    disabled: true   # blocks datacenter/VPN IPs (403) — 2026-06-20
     weight: 1.0
     timeout: 8.0
 
