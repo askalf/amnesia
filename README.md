@@ -121,7 +121,7 @@ Amnesia stores nothing. No accounts. No cookies. No server-side logs. The SearXN
 
 ## Related
 
-- [AskAlf](https://askalf.org) — self-hosted AI workforce platform (includes Amnesia in the webhost stack)
+- [AskAlf](https://askalf.org) — self-hosted AI workforce platform (includes Amnesia)
 - [SearXNG](https://github.com/searxng/searxng) — the meta-search engine that powers Amnesia
 - [Gluetun](https://github.com/qdm12/gluetun) — VPN tunnel for containerized services
 
