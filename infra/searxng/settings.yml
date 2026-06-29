@@ -90,12 +90,12 @@ engines:
   # GENERAL — reliable through a VPN exit IP
   # ============================================
   - name: brave
-    disabled: true   # chronic failures behind VPN - 2026-06-21
+    disabled: false   # re-enabled 2026-06-29 — verified working behind VPN
     weight: 3.0
     timeout: 6.0
 
   - name: bing
-    disabled: true   # chronic timeout+disconnect behind VPN - 2026-06-21
+    disabled: false   # re-enabled 2026-06-29 — verified working behind VPN
     weight: 2.5
     timeout: 6.0
 
@@ -120,7 +120,7 @@ engines:
     timeout: 6.0
 
   - name: presearch
-    disabled: true   # chronic 403 access-denied behind VPN - 2026-06-21
+    disabled: false   # re-enabled 2026-06-29 — verified working behind VPN
     weight: 1.0
     timeout: 6.0
 
