@@ -25,7 +25,9 @@ ALLOWED_ORIGIN = "https://amnesia.tax"
 # per worker/DEPLOY.md (cloudflared ingress search-origin.amnesia.tax -> :8081).
 ORIGIN_HOST = "https://search-origin.amnesia.tax"
 # Session cookie lifetime in seconds (Turnstile solved once, then skipped).
-SESSION_TTL = "1800"
+# 6h (was 30min): the cookie is just an HMAC-signed expiry — nothing
+# user-identifying — so a longer life cuts re-challenges at negligible risk.
+SESSION_TTL = "21600"
 # Egress IP(s) of the trusted front-end-verification bridge (the platform box).
 # Requests from these IPs skip Turnstile — the headless bridge can't solve it
 # from a datacenter IP. Comma-separated; not a secret. Empty disables the bypass.
