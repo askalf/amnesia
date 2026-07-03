@@ -23,6 +23,7 @@ jobs:
           cp src/robots.txt deploy/robots.txt 2>/dev/null || true
           cp src/sitemap.xml deploy/sitemap.xml 2>/dev/null || true
           cp src/_headers deploy/_headers 2>/dev/null || true
+          cp -r src/fonts deploy/fonts   # self-hosted Space Mono (hard fail if missing — the CSP no longer allows Google Fonts)
 
       - name: Deploy amnesia.tax
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4

@@ -14,7 +14,15 @@
  *   GET /session       — pre-warm: verify a Turnstile token, set the cookie,
  *                        return {ok:true}. Lets the SPA warm the session on load.
  *   GET /search        — proxied to SearXNG; cookie OR token required.
- *   GET /autocompleter — same.
+ *   GET /autocompleter — same, plus an edge cache (below).
+ *
+ * Autocomplete edge cache: the upstream ride (tunnel -> SearXNG -> DuckDuckGo
+ * suggest via the VPN proxy) costs ~1.5s, which is unusable per keystroke.
+ * Prefix queries are massively repetitive, so 200s are cached in the colo's
+ * Cache API for AC_CACHE_TTL, keyed on the normalized (trim+lowercase) query.
+ * Lookup happens AFTER auth — the cache saves the origin trip, not the gate.
+ * Clients still get no-store; the edge copy is ours alone. No new privacy
+ * exposure: Cloudflare already terminates TLS on every request.
  *
  * Auth precedence: valid session cookie → allow (no Turnstile). Else a valid
  * `cf-turnstile-token` → allow AND (re)issue the cookie. Else 401.
@@ -35,9 +43,10 @@
 
 const SITEVERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const COOKIE_NAME = "amns";
+const AC_CACHE_TTL = 21600; // 6h — autocomplete suggestions age well
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const allowedOrigin = env.ALLOWED_ORIGIN || "https://amnesia.tax";
     const ttl = parseInt(env.SESSION_TTL || "1800", 10);
@@ -144,6 +153,29 @@ export default {
     const originUrl =
       originBase.replace(/\/$/, "") + url.pathname + "?" + url.searchParams.toString();
 
+    // Autocomplete edge cache (see header). Keyed on the normalized query so
+    // "Linux " and "linux" share an entry.
+    const isAc = url.pathname === "/autocompleter";
+    let acCacheKey = null;
+    if (isAc) {
+      const qNorm = (url.searchParams.get("q") || "").trim().toLowerCase();
+      acCacheKey = new Request(
+        originBase.replace(/\/$/, "") + "/autocompleter?q=" + encodeURIComponent(qNorm)
+      );
+      const hit = await caches.default.match(acCacheKey);
+      if (hit) {
+        return new Response(hit.body, {
+          status: 200,
+          headers: cors({
+            "content-type": hit.headers.get("content-type") || "application/json",
+            "cache-control": "no-store",
+            "x-amnesia-cache": "hit",
+            ...setCookie,
+          }),
+        });
+      }
+    }
+
     const originHeaders = new Headers();
     originHeaders.set("accept", request.headers.get("accept") || "application/json");
     originHeaders.set("user-agent", "amnesia-api-gate/1.0");
@@ -161,6 +193,26 @@ export default {
       "cache-control": "no-store",
       ...setCookie,
     });
+
+    // Store good autocomplete answers at the edge; the client copy stays
+    // no-store. The stored copy's cache-control is what governs edge retention.
+    if (isAc && originResp.status === 200 && acCacheKey) {
+      const [clientBody, cacheBody] = originResp.body.tee();
+      ctx.waitUntil(
+        caches.default.put(
+          acCacheKey,
+          new Response(cacheBody, {
+            status: 200,
+            headers: {
+              "content-type": originResp.headers.get("content-type") || "application/json",
+              "cache-control": "public, max-age=" + AC_CACHE_TTL,
+            },
+          })
+        )
+      );
+      return new Response(clientBody, { status: 200, headers: respHeaders });
+    }
+
     return new Response(originResp.body, { status: originResp.status, headers: respHeaders });
   },
 };

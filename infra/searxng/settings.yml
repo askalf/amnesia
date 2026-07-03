@@ -105,7 +105,7 @@ engines:
     timeout: 6.0
 
   - name: startpage
-    disabled: false
+    disabled: true   # chronic CAPTCHA behind VPN (9x/48h, 600s suspensions) and the slowest engine — 2026-07-02
     weight: 2.0
     timeout: 8.0
 

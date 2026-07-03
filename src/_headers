@@ -2,7 +2,7 @@
 # Versioned here so security headers deploy with the site (no CF Transform Rule
 # / token needed). CSP is matched to exactly what the SPA loads:
 #   - Turnstile script + iframe : https://challenges.cloudflare.com
-#   - Google Fonts              : https://fonts.googleapis.com (css) + https://fonts.gstatic.com (font files)
+#   - fonts                     : self-hosted under /fonts/ (no Google Fonts origins)
 #   - the search API fetch       : https://api.amnesia.tax
 #   - inline <style> + <script>  : 'unsafe-inline' (single-file app; no per-request nonce on static Pages)
 #   - favicon (data: svg) + og   : data: / 'self'
@@ -17,4 +17,13 @@
   Referrer-Policy: no-referrer
   Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=(), interest-cohort=()
   Cross-Origin-Opener-Policy: same-origin
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.amnesia.tax https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://api.amnesia.tax https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests
+
+# The SPA only changes on deploy, and Pages purges its cache then — let the
+# edge serve it without an origin revalidation per request (was max-age=0).
+/
+  Cache-Control: public, max-age=300, stale-while-revalidate=86400
+
+# Immutable font files (bump the filename to change them).
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
