@@ -8,6 +8,7 @@ Privacy-first search aggregator. No tracking, no ads, no cookies, no search hist
 
 [![Live](https://img.shields.io/badge/Live-amnesia.tax-10b981?style=for-the-badge)](https://amnesia.tax)
 [![License](https://img.shields.io/badge/License-MIT-10b981?style=for-the-badge)](LICENSE)
+[![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/askalf/amnesia?style=for-the-badge&label=OpenSSF%20Scorecard&color=10b981)](https://scorecard.dev/viewer/?uri=github.com/askalf/amnesia)
 
 </div>
 
