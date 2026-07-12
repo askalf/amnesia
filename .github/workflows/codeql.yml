@@ -1,0 +1,61 @@
+# CodeQL — GitHub's semantic code-scanning engine. Advanced setup (this file)
+# is the chosen path; code-scanning default setup stays not-configured, since
+# the two conflict. Scans the SPA render/auth JS (src/amnesia-search.html), the
+# Worker HMAC/session code (worker/src/index.js), and the Actions workflows.
+# CodeQL is free on public repos.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '23 6 * * 1' # weekly, Monday 06:23 UTC (staggered off the :00 grid)
+
+# Never let two analyses of the same ref pile up; cancel superseded PR runs but
+# let push/schedule runs finish so a main-branch result is never dropped.
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    # GitHub-hosted, NOT [self-hosted, amnesia]: CodeQL runs on pull_request,
+    # including from forks (public repo). Running untrusted fork code on the
+    # self-hosted runner — which lives on the production box — is a remote
+    # code-exec path. Keep PR-triggered analysis on ephemeral GH runners; only
+    # the deploy workflows (push to main, no fork exposure) use self-hosted.
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # upload the SARIF results to code scanning
+      contents: read # checkout the source
+      actions: read # analyze the Actions workflows
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@02c5e83432fe5497fd85b873b6c9f16a8578e1d9 # v3.37.0
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@02c5e83432fe5497fd85b873b6c9f16a8578e1d9 # v3.37.0
+        with:
+          category: "/language:${{ matrix.language }}"
