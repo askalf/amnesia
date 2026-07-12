@@ -1,0 +1,42 @@
+# ClusterFuzzLite — continuous fuzzing of amnesia's auth boundary: the Worker's
+# signed session cookie (client-controlled input that decides whether a request
+# skips Turnstile — a forged cookie = free un-gated search access). Runs weekly
+# + on demand; a discovered crash fails the job and is uploaded as an artifact.
+# Fuzz targets live in ./fuzz, built by .clusterfuzzlite/build.sh (Jazzer.js).
+# OpenSSF Scorecard credits the Fuzzing check from the .clusterfuzzlite/ config.
+name: ClusterFuzzLite
+
+on:
+  schedule:
+    - cron: '37 6 * * 1' # weekly, Monday 06:37 UTC (staggered off the :00 grid)
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  Fuzzing:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # JavaScript (Jazzer.js) has no native sanitizer — OSS-Fuzz rejects
+        # address/memory/undefined for JS ("cannot be fuzzed with sanitizers"),
+        # and the action's config rejects `none`. `coverage` is the value real
+        # JS ClusterFuzzLite projects use with this action version.
+        sanitizer: [coverage]
+    steps:
+      - name: Build fuzzers (${{ matrix.sanitizer }})
+        id: build
+        uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          language: javascript
+          sanitizer: ${{ matrix.sanitizer }}
+      - name: Run fuzzers (${{ matrix.sanitizer }})
+        id: run
+        uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 300
+          mode: 'batch'
+          language: javascript
+          sanitizer: ${{ matrix.sanitizer }}
