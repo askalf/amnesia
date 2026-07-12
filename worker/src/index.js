@@ -42,7 +42,7 @@
  */
 
 const SITEVERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
-const COOKIE_NAME = "amns";
+export const COOKIE_NAME = "amns";
 const AC_CACHE_TTL = 21600; // 6h — autocomplete suggestions age well
 
 export default {
@@ -236,7 +236,11 @@ async function siteverify(token, secret, ip) {
 }
 
 // ---- Signed session cookie (HMAC-SHA256 over expiry) ---------------------
-async function hmac(secret, msg) {
+// The cookie helpers below are exported for the fuzz targets in /fuzz — the
+// cookie value is client-controlled input guarding auth, so its
+// forgery-resistance contract is machine-checked there. Named exports beside
+// the default export don't affect the Worker runtime.
+export async function hmac(secret, msg) {
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret || ""),
@@ -248,14 +252,14 @@ async function hmac(secret, msg) {
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function buildCookie(secret, ttl) {
+export async function buildCookie(secret, ttl) {
   const exp = Math.floor(Date.now() / 1000) + ttl;
   const sig = await hmac(secret, String(exp));
   const value = `${exp}.${sig}`;
   return `${COOKIE_NAME}=${value}; Max-Age=${ttl}; Path=/; HttpOnly; Secure; SameSite=None`;
 }
 
-async function verifySession(value, secret) {
+export async function verifySession(value, secret) {
   const dot = value.lastIndexOf(".");
   if (dot < 0) return false;
   const exp = value.slice(0, dot);
@@ -266,14 +270,14 @@ async function verifySession(value, secret) {
   return timingSafeEqual(sig, expected);
 }
 
-function timingSafeEqual(a, b) {
+export function timingSafeEqual(a, b) {
   if (a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
 }
 
-function readCookie(request, name) {
+export function readCookie(request, name) {
   const h = request.headers.get("cookie");
   if (!h) return null;
   for (const part of h.split(";")) {

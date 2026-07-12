@@ -4,3 +4,18 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+  # npm: the fuzz devDependency (@jazzer.js/core) — the only npm surface in the
+  # repo (site is static, Worker is zero-dep).
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Keeps the digest-pinned ClusterFuzzLite base image tracking upstream —
+  # OSS-Fuzz pushes new builder images often, and a stale pin would slowly
+  # drift the fuzz toolchain away from what OSS-Fuzz actually supports.
+  - package-ecosystem: "docker"
+    directory: "/.clusterfuzzlite"
+    schedule:
+      interval: "weekly"

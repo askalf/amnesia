@@ -8,9 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Continuous fuzzing of the API gate's auth boundary (ClusterFuzzLite +
+  Jazzer.js). `fuzz/session.fuzz.js` pins the Worker's signed-session-cookie
+  contract — the one input an anonymous internet client fully controls: it
+  never throws on a hostile cookie value, never verifies a value the operator's
+  `SESSION_SECRET` didn't sign (forgery = free, un-gated search past Turnstile),
+  and a `buildCookie` result always round-trips under its own secret and never
+  under another. The cookie helpers are now named exports beside the Worker's
+  default export (no runtime change). `cflite.yml` runs weekly; `npm run fuzz`
+  is the local loop. The target is async (WebCrypto HMAC), so it runs in
+  Jazzer's async mode — not `--sync`, which fires the promises without awaiting
+  and OOMs instead of fuzzing. Closes the OpenSSF Scorecard Fuzzing check.
 - Live search suggestions: debounced autocomplete dropdown backed by the API
   gate's `/autocompleter` endpoint (keyboard navigation, click/tap select).
   Best-effort — rides the session cookie and never triggers Turnstile solves.
+
+### Changed
+- `deploy.yml` workflow token drops to read-only at the top level; the
+  `deployments: write` scope moves to the single deploy job. Closes the
+  Scorecard Token-Permissions finding. No behavior change.
 
 ### Security
 - Validate result/image URLs against an http(s) scheme allowlist before rendering

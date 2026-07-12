@@ -1,0 +1,16 @@
+{
+  "name": "amnesia-repo",
+  "private": true,
+  "description": "Build/tooling manifest for the amnesia repo. Not published — exists so the fuzz targets (npm run fuzz, ClusterFuzzLite) can resolve Jazzer.js. The site is static (src/) and the API gate is a zero-dependency Cloudflare Worker (worker/).",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "fuzz": "node fuzz/run.mjs"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@jazzer.js/core": "^4.0.0"
+  }
+}
