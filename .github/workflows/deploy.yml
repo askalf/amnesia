@@ -8,12 +8,24 @@ on:
 permissions:
   contents: read
 
+# Two pushes to main must not deploy Pages concurrently and land out of order.
+# Queue rather than cancel, matching deploy-worker.yml: an interrupted deploy
+# leaves a half-applied state, which is worse than a late one.
+concurrency:
+  group: deploy-pages-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
     permissions:
       contents: read
       deployments: write # wrangler-action records a GitHub deployment
     runs-on: [self-hosted, amnesia]
+    # Bounds the amnesia runner's single slot. Without it the job inherits
+    # GitHub's 360-minute default, so one wedged deploy blocks every later one
+    # for six hours. Sized from observed runs (well under a minute) the same
+    # way deploy-worker.yml's 5 was.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
