@@ -60,8 +60,8 @@ ui:
   infinite_scroll: false
 
 outgoing:
-  request_timeout: 8.0
-  max_request_timeout: 15.0
+  request_timeout: 4.0
+  max_request_timeout: 8.0
   useragent_suffix: ""
   # Perf: large pools so ~40 engines query concurrently without head-of-line
   # blocking (host: 4 CPU / ~5 GB free). keepalive reuses gluetun connections.
@@ -120,9 +120,9 @@ engines:
     timeout: 6.0
 
   - name: presearch
-    disabled: false   # re-enabled 2026-06-29 — verified working behind VPN
+    disabled: true    # 2026-08-15: 7/7 probe timeouts, zero results behind VPN; its 2-step token+query flow ignores the engine timeout and pinned every search at ~5.2s
     weight: 1.0
-    timeout: 6.0
+    timeout: 3.0
 
   # ============================================
   # GENERAL — VPN-flaky (self-suspend on 403, low cost to keep)
