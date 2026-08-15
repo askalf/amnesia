@@ -14,13 +14,17 @@
  *   GET /session       — pre-warm: verify a Turnstile token, set the cookie,
  *                        return {ok:true}. Lets the SPA warm the session on load.
  *   GET /search        — proxied to SearXNG; cookie OR token required.
- *   GET /autocompleter — same, plus an edge cache (below).
+ *   GET /autocompleter — same. Both carry an edge cache (below).
  *
- * Autocomplete edge cache: the upstream ride (tunnel -> SearXNG -> DuckDuckGo
- * suggest via the VPN proxy) costs ~1.5s, which is unusable per keystroke.
- * Prefix queries are massively repetitive, so 200s are cached in the colo's
- * Cache API for AC_CACHE_TTL, keyed on the normalized (trim+lowercase) query.
- * Lookup happens AFTER auth — the cache saves the origin trip, not the gate.
+ * Edge caches: the upstream ride (tunnel -> SearXNG -> engines via the VPN
+ * proxy) costs ~1.5s for autocomplete and ~1-4s for a search. Both are
+ * repetitive, so 200s are cached in the colo's Cache API — autocomplete for
+ * AC_CACHE_TTL (prefix queries age well), search results for SEARCH_CACHE_TTL
+ * (short: results should stay fresh, but a repeated/popular query inside the
+ * window is served at edge speed). Keys are the normalized (trim+lowercase)
+ * query plus the sorted remaining params (category, page, format, ...), so
+ * the key carries the QUERY only — never a cookie, token, or IP. Lookup
+ * happens AFTER auth — the cache saves the origin trip, not the gate.
  * Clients still get no-store; the edge copy is ours alone. No new privacy
  * exposure: Cloudflare already terminates TLS on every request.
  *
@@ -44,6 +48,7 @@
 const SITEVERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 export const COOKIE_NAME = "amns";
 const AC_CACHE_TTL = 21600; // 6h — autocomplete suggestions age well
+const SEARCH_CACHE_TTL = 180; // 3m — repeat searches at edge speed, results stay fresh
 
 export default {
   async fetch(request, env, ctx) {
@@ -153,16 +158,20 @@ export default {
     const originUrl =
       originBase.replace(/\/$/, "") + url.pathname + "?" + url.searchParams.toString();
 
-    // Autocomplete edge cache (see header). Keyed on the normalized query so
-    // "Linux " and "linux" share an entry.
+    // Edge cache (see header). Keyed on the normalized query + sorted params
+    // so "Linux " and "linux" (and reordered param spellings) share an entry.
+    // The key never contains a cookie, token, or client IP — query text only.
     const isAc = url.pathname === "/autocompleter";
-    let acCacheKey = null;
-    if (isAc) {
-      const qNorm = (url.searchParams.get("q") || "").trim().toLowerCase();
-      acCacheKey = new Request(
-        originBase.replace(/\/$/, "") + "/autocompleter?q=" + encodeURIComponent(qNorm)
+    const cacheTtl = isAc ? AC_CACHE_TTL : SEARCH_CACHE_TTL;
+    let edgeCacheKey = null;
+    if (isAc || url.pathname === "/search") {
+      const keyParams = new URLSearchParams(url.searchParams);
+      keyParams.set("q", (keyParams.get("q") || "").trim().toLowerCase());
+      keyParams.sort();
+      edgeCacheKey = new Request(
+        originBase.replace(/\/$/, "") + url.pathname + "?" + keyParams.toString()
       );
-      const hit = await caches.default.match(acCacheKey);
+      const hit = await caches.default.match(edgeCacheKey);
       if (hit) {
         return new Response(hit.body, {
           status: 200,
@@ -194,18 +203,18 @@ export default {
       ...setCookie,
     });
 
-    // Store good autocomplete answers at the edge; the client copy stays
-    // no-store. The stored copy's cache-control is what governs edge retention.
-    if (isAc && originResp.status === 200 && acCacheKey) {
+    // Store good answers at the edge; the client copy stays no-store. The
+    // stored copy's cache-control is what governs edge retention (per-path TTL).
+    if (edgeCacheKey && originResp.status === 200) {
       const [clientBody, cacheBody] = originResp.body.tee();
       ctx.waitUntil(
         caches.default.put(
-          acCacheKey,
+          edgeCacheKey,
           new Response(cacheBody, {
             status: 200,
             headers: {
               "content-type": originResp.headers.get("content-type") || "application/json",
-              "cache-control": "public, max-age=" + AC_CACHE_TTL,
+              "cache-control": "public, max-age=" + cacheTtl,
             },
           })
         )
