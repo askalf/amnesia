@@ -4,131 +4,102 @@
 
 **Search the web. Remember nothing.**
 
-Privacy-first search aggregator. No tracking, no ads, no cookies, no search history. 155+ search engines via SearXNG + encrypted VPN tunnel. Self-hosted.
+Privacy-first meta-search: no tracking, no ads, no accounts, no search history — with a bot-gated API and a VPN between every query and the engines. Live at **[amnesia.tax](https://amnesia.tax)**, self-hostable from this repo.
 
 [![Live](https://img.shields.io/badge/Live-amnesia.tax-10b981?style=for-the-badge)](https://amnesia.tax)
 [![License](https://img.shields.io/badge/License-MIT-10b981?style=for-the-badge)](LICENSE)
+
+[![ci](https://github.com/askalf/amnesia/actions/workflows/ci.yml/badge.svg)](https://github.com/askalf/amnesia/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/askalf/amnesia/actions/workflows/codeql.yml/badge.svg)](https://github.com/askalf/amnesia/actions/workflows/codeql.yml)
+[![canary](https://github.com/askalf/amnesia/actions/workflows/canary.yml/badge.svg)](https://github.com/askalf/amnesia/actions/workflows/canary.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/askalf/amnesia/badge)](https://scorecard.dev/viewer/?uri=github.com/askalf/amnesia)
+
+[Privacy](#privacy) · [Architecture](#architecture--the-one-that-actually-runs) · [Security](#security--the-part-most-search-frontends-skip) · [Engine coverage](#engine-coverage--honest-numbers) · [Self-host](#self-host)
 
 </div>
 
 ---
 
-## Features
-
-- **155+ search engines** — Google, Brave, DuckDuckGo, Bing, Yahoo, Startpage, Mojeek, Qwant, and many more
-- **Multi-source aggregation** — pulls and merges results from multiple engines simultaneously
-- **Category tabs** — All, Images, News, Videos, Music, Science, Social, Files
-- **Engine tags** — see which sources contributed each result
-- **Autocomplete** — search suggestions as you type
-- **Pagination** — full result navigation
-- **Search timing** — see how fast your query resolved
-- **OpenSearch integration** — add Amnesia as your browser's default search engine
-- **Dark/Light mode** — respects system preference, toggleable
-- **Zero tracking** — no cookies, no analytics, no search history stored
-- **Self-contained** — single HTML file (~31KB), inline CSS/JS, no external dependencies
-
-## Screenshot
-
-```
-┌──────────────────────────────────────────────┐
-│  amnesia                          ☀ / ☾      │
-│                                              │
-│  ┌──────────────────────────────────┐        │
-│  │  Search the web...               │  🔍    │
-│  └──────────────────────────────────┘        │
-│                                              │
-│  All    Images    News    Videos              │
-│                                              │
-│  ▸ Result Title — source.com      [Google]   │
-│    Description of the search result...       │
-│                                              │
-│  ▸ Result Title — other.com       [Brave]    │
-│    Description of the search result...       │
-│                                              │
-│  ◂ 1  2  3  4  5 ▸        0.34s · 47 results│
-└──────────────────────────────────────────────┘
-```
-
-## Self-Host
-
-### With Docker (standalone)
-
-```bash
-docker run -d --name amnesia \
-  -p 8080:8080 \
-  searxng/searxng
-
-# Serve amnesia-search.html via any static file server
-# pointing to your SearXNG instance
-```
-
-## Search Engines
-
-155+ engines across all categories:
-
-| Category | Engines |
-|----------|---------|
-| **Web** | Google, Brave, DuckDuckGo, Bing, Startpage, Mojeek, Qwant, Yahoo, Yandex, Yep, Ask |
-| **News** | Google News, Brave News, Bing News, DDG News, Yahoo News, Wikinews |
-| **Images** | Google, Brave, Bing, DDG, Unsplash, Pexels, Pixabay, Flickr, Pinterest |
-| **Videos** | Google, YouTube, Brave, Bing, DDG, Dailymotion, Vimeo, Rumble, Odysee |
-| **Science** | Google Scholar, arXiv, PubMed, Semantic Scholar, OpenAlex |
-| **Social** | Reddit, Lemmy, Mastodon, 9gag |
-| **Music** | Genius, Bandcamp, Soundcloud, Deezer |
-| **Dev** | GitHub, GitLab, StackOverflow, npm, PyPI, Docker Hub, HuggingFace |
-| **Files** | 1337x, Piratebay, Library Genesis, Anna's Archive |
-| **Maps** | Apple Maps, OpenStreetMap |
-
-All engines routed through VPN — search providers see the VPN exit IP, not yours.
-
-## Architecture
-
-```
-Browser → Cloudflare Tunnel → Nginx (cache + rate limit)
-                                  ↓
-                              amnesia-search.html (static, 31KB)
-                                  ↓ (API calls)
-                              SearXNG (155+ engines) → Gluetun VPN → Search Engines
-                                  ↑
-                              Redis (result cache)
-```
-
-- **Single HTML file** — no build step, no framework, no dependencies
-- **SearXNG backend** — meta-search aggregator, no API keys needed
-- **Cloudflare Tunnel** — zero-trust access, DDoS protection
-- **Gluetun VPN** — all outbound search queries encrypted through WireGuard (ProtonVPN)
-- **Nginx** — response caching (60s TTL), rate limiting, security headers
-- **Redis** — SearXNG result caching for faster repeated queries
-
 ## Privacy
 
 | | Amnesia | Google | Bing | DuckDuckGo |
 |---|:---:|:---:|:---:|:---:|
-| Cookies | None | Yes | Yes | Yes |
-| Search history | None | Stored | Stored | None* |
+| Cookies | Session-only, anonymous* | Yes | Yes | Yes |
+| Search history | None | Stored | Stored | None** |
 | IP logging | None | Yes | Yes | Partial |
 | Ads | None | Yes | Yes | Yes |
 | Tracking pixels | None | Yes | Yes | None |
-| JavaScript required | Yes | Yes | Yes | No |
 
-*DuckDuckGo doesn't store searches but does log metadata.
+\* one HMAC-signed, 30-minute session cookie so the bot-check solves **once**, not per search — it identifies a *session*, never a person, and stores nothing.
+\** DuckDuckGo doesn't store searches but does log metadata.
 
-Amnesia stores nothing. No accounts. No cookies. No server-side logs. The SearXNG backend proxies queries to search engines — they see the VPN exit IP, not yours.
+Amnesia stores nothing. No accounts, no analytics, no server-side query logs. The SearXNG backend proxies every query through an encrypted VPN — search engines see the VPN exit IP, never yours.
+
+## Architecture — the one that actually runs
+
+```mermaid
+flowchart LR
+    B["browser"] --> P["Cloudflare Pages<br/>static SPA · strict CSP/headers"]
+    B --> W["API-gate Worker<br/>Turnstile once → HMAC session cookie<br/>edge-caches autocomplete"]
+    W -->|"secret header,<br/>WAF-locked origin"| T["Cloudflare Tunnel"]
+    T --> S["SearXNG<br/>hardened container"]
+    S --> V["Gluetun VPN<br/>WireGuard / ProtonVPN"]
+    V --> E["search engines"]
+```
+
+- **Front end** — one self-contained HTML file (`src/amnesia-search.html`, ~46 KB): inline CSS/JS, self-hosted fonts, no framework, no build step, no third-party requests beyond the Turnstile challenge. Category tabs, engine tags per result, debounced autocomplete, pagination, timing, OpenSearch integration, dark/light mode.
+- **API gate** — a Cloudflare Worker in front of the backend. First visit solves a Turnstile check and gets a signed session cookie; every search after that is cookie-authenticated. Fails **closed** if its secrets are unset. Autocomplete responses are edge-cached (6 h) so suggestions don't hammer the backend per keystroke.
+- **Origin lock** — the backend hostname answers only to the Worker: a WAF rule 403s any request without the gate's secret header, plus zone rate-limits on `/search` for both hosts. You can't reach SearXNG around the gate (try it: `search-origin.amnesia.tax/search` → 403).
+- **Backend** — a single hardened SearXNG container (`cap_drop: ALL`, read-only rootfs, no-new-privileges, memory-capped, digest-pinned) whose **only egress is the VPN**. No result cache, no Redis/valkey, no nginx — deliberately: fewer moving parts holding your queries is the point.
+
+## Security — the part most search frontends skip
+
+- **The session-auth boundary is fuzzed in CI** — ClusterFuzzLite drives the Worker's cookie sign/verify against forgery and splice attacks on every change ([`fuzz/session.fuzz.js`](fuzz/session.fuzz.js)).
+- **Result URLs are scheme-allowlisted** (`safeUrl()`): a poisoned engine result carrying a `javascript:`/`data:` URL is dropped before it can become a clickable script. Verified against the **live deployed site** with real-browser request-interception injection tests, not just unit tests.
+- **CodeQL + OpenSSF Scorecard + weekly canary** (token health + live smoke: site 200 / gate 401 / origin 403) run continuously; actions are SHA-pinned; CI for fork-reachable workflows runs on GitHub-hosted runners so untrusted PR code never touches the deploy host.
+- **Strict headers/CSP** ship with the site (`src/_headers`); Turnstile is the only third party in the policy.
+- **History was scrubbed before this repo went public** and secrets live only in Worker bindings / CI secrets — nothing in the tree, nothing in the history.
+
+## Engine coverage — honest numbers
+
+SearXNG's catalog spans **155+ engines**, and self-hosters get all of it. The hosted instance at amnesia.tax deliberately runs a **curated set that actually works from behind a VPN** — currently Brave, Bing, DuckDuckGo, Yandex, Presearch, Crowdview, and searchmysite for web, plus per-category engines (news, images, videos, science, dev, social, files).
+
+Why not Google/Mojeek/Qwant? They block datacenter IP ranges wholesale — every VPN exit is a datacenter IP, so those engines refuse the hosted instance's queries no matter which exit it uses. That's the privacy-vs-coverage tradeoff made explicit: **the engines that can't see you are the engines you get.** Broken or perma-blocked engines are disabled rather than left to time out, which is also why searches stay fast (~1–2 s end-to-end). The live engine set is mirrored in [`infra/searxng/settings.yml`](infra/searxng/settings.yml).
+
+## Self-Host
+
+Minimal (your own machine, your own IP — every engine available, no gate needed):
+
+```bash
+docker run -d --name searxng -p 8080:8080 searxng/searxng
+# serve src/amnesia-search.html from any static server, pointed at your instance
+```
+
+The full production shape — VPN egress, hardened container, tunnel, gated Worker — is documented in [`infra/`](infra/) (compose file, SearXNG settings, tunnel ingress snippet, [`DEPLOY.md`](infra/DEPLOY.md)). The Worker lives in [`worker/`](worker/) and deploys with `wrangler`; the site deploys to any static host (Cloudflare Pages here, via [`deploy.yml`](.github/workflows/deploy.yml)).
+
+## Layout
+
+```
+src/                 the SPA: amnesia-search.html (~46 KB, self-contained) + _headers (CSP) + fonts + og
+worker/              the API-gate Worker: Turnstile → HMAC session, /search /autocompleter /session /healthz
+infra/               production mirror: compose, hardened SearXNG settings, tunnel ingress, DEPLOY.md
+fuzz/                ClusterFuzzLite target for the session-cookie auth boundary
+.github/workflows/   ci · codeql · cflite · scorecard · canary (weekly live smoke) · deploy + deploy-worker
+```
 
 ## Stack
 
-`HTML` · `CSS` · `JavaScript` · `SearXNG` · `Nginx` · `Redis` · `Gluetun VPN` · `Cloudflare Tunnel` · `ProtonVPN`
+`HTML` · `CSS` · `JavaScript` · `SearXNG` · `Cloudflare Pages + Workers + Tunnel + WAF` · `Turnstile` · `Gluetun (WireGuard)` · `ProtonVPN`
 
 ## Related
 
-- [askalf](https://askalf.org) — the AI operation that runs Sprayberry Labs (includes Amnesia)
 - [SearXNG](https://github.com/searxng/searxng) — the meta-search engine that powers Amnesia
 - [Gluetun](https://github.com/qdm12/gluetun) — VPN tunnel for containerized services
+- [askalf](https://askalf.org) — the AI operation that runs Sprayberry Labs (includes Amnesia)
 
 ## License
 
 MIT — [askalf.org](https://askalf.org) · Live at [amnesia.tax](https://amnesia.tax)
 
 ---
-amnesia is by the maker of **[Own Your Stack](https://github.com/askalf)** — own your AI infrastructure instead of renting it.
+Part of **[Own Your Stack](https://github.com/askalf)** — own your AI infrastructure instead of renting it by the token. Built by Thomas Sprayberry.
