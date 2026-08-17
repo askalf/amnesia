@@ -28,10 +28,21 @@ ORIGIN_HOST = "https://search-origin.amnesia.tax"
 # 6h (was 30min): the cookie is just an HMAC-signed expiry — nothing
 # user-identifying — so a longer life cuts re-challenges at negligible risk.
 SESSION_TTL = "21600"
-# Egress IP(s) of the trusted front-end-verification bridge (the platform box).
-# Requests from these IPs skip Turnstile — the headless bridge can't solve it
-# from a datacenter IP. Comma-separated; not a secret. Empty disables the bypass.
-BRIDGE_IPS = "178.104.181.103"
+# Egress IP(s) of the trusted front-end-verification bridge. Requests from
+# these IPs skip Turnstile — the headless bridge can't solve it. Comma-
+# separated; not a secret. Empty disables the bypass.
+#
+# TWO entries, because the bridge's traffic no longer leaves from the box:
+# browser-net egresses through the dev2 RESIDENTIAL relay (alf-egress-bridge),
+# so the gate sees dev2's home IP. The box IP stays listed in case that
+# routing ever reverts.
+#
+# ⚠ The residential IP is DYNAMIC. When it rotates, bridge-driven searches
+# fail with exactly this signature: the SPA renders "Verification failed —
+# please try your search again" (gate answered turnstile_required) while
+# human browsers are fine. The fix is to re-check the bridge's egress (drive
+# it to an IP echo) and update this line — nothing else is broken.
+BRIDGE_IPS = "178.104.181.103,99.149.244.98"
 
 # Route: take over api.amnesia.tax for the Worker.
 [[routes]]
