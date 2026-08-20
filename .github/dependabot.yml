@@ -4,6 +4,14 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      # init/analyze/upload-sarif must all run the SAME codeql-action version.
+      # Ungrouped, dependabot splits one bump into a PR per sub-action, and each
+      # is individually unmergeable: the Analyze step fails with "Not all workflow
+      # steps that use github/codeql-action actions use the same version".
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
 
   # npm: the fuzz devDependency (@jazzer.js/core) — the only npm surface in the
   # repo (site is static, Worker is zero-dep).
