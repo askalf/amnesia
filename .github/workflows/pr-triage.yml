@@ -1,0 +1,129 @@
+name: PR triage
+
+# Labels, sizes, assigns, and issue-links every PR so the queue reads at a
+# glance instead of being a wall of untriaged titles.
+#
+# pull_request_target, so PRs from forks get triaged too — a plain
+# pull_request run gets a read-only token on a fork PR and would just 403.
+# It is the safe half of that trigger: this workflow never checks out or
+# executes PR code, it only reads the event payload and calls the API.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-triage-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    name: triage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Label by changed path
+        uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+        with:
+          # Additive. Syncing would strip the `dependencies` label Dependabot
+          # puts on its own PRs whenever the diff doesn't touch a manifest.
+          sync-labels: false
+
+      - name: Size label, assignee, issue link
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const { owner, repo } = context.repo;
+            const number = pr.number;
+
+            // ── size ──────────────────────────────────────────────────────
+            // Measured on hand-written lines only. Lockfiles, hash-pinned
+            // requirements and generated corpora are real changes but they
+            // aren't review effort, and counting them makes every one of
+            // them an size/XL.
+            const GENERATED = [
+              /(^|\/)package-lock\.json$/,
+              /(^|\/)requirements-.*\.txt$/,
+              /(^|\/)go\.sum$/,
+              /^arena\/corpus.*\.json$/,
+              /^arena\/.*-results\.json$/,
+            ];
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: number, per_page: 100,
+            });
+            const churn = files
+              .filter(f => !GENERATED.some(re => re.test(f.filename)))
+              .reduce((n, f) => n + f.additions + f.deletions, 0);
+            const SIZES = [
+              ['size/XS', 10], ['size/S', 50], ['size/M', 200],
+              ['size/L', 800], ['size/XL', Infinity],
+            ];
+            const size = SIZES.find(([, max]) => churn < max)[0];
+
+            const current = pr.labels.map(l => l.name);
+            for (const stale of current.filter(n => n.startsWith('size/') && n !== size)) {
+              await github.rest.issues.removeLabel({
+                owner, repo, issue_number: number, name: stale,
+              }).catch(() => {});
+            }
+            if (!current.includes(size)) {
+              await github.rest.issues.addLabels({
+                owner, repo, issue_number: number, labels: [size],
+              });
+              core.info(`size: ${size} (${churn} hand-written lines)`);
+            }
+
+            // ── assignee ──────────────────────────────────────────────────
+            // Whoever opened it owns it until someone says otherwise. Bots
+            // can't be assignees, and an outside contributor without repo
+            // access is silently dropped by the API — so this is best-effort
+            // and never fails the run.
+            if (pr.assignees.length === 0 && pr.user.type !== 'Bot') {
+              try {
+                await github.rest.issues.addAssignees({
+                  owner, repo, issue_number: number, assignees: [pr.user.login],
+                });
+                core.info(`assigned: ${pr.user.login}`);
+              } catch (e) {
+                core.info(`could not assign ${pr.user.login}: ${e.message}`);
+              }
+            }
+
+            // ── development (linked issue) ────────────────────────────────
+            // The Development sidebar link is driven by a closing keyword in
+            // the body — there's no API for it. So if the branch names an
+            // issue and the body doesn't already close one, write the
+            // keyword in. Only explicit branch forms count (issue-42, gh-42,
+            // 42-some-fix); a bare digit anywhere in a branch name is a
+            // version or a retry counter far more often than an issue.
+            const body = pr.body || '';
+            const closes = /\b(clos(e[sd]?)?|fix(e[sd])?|resolv(e[sd]?))\s+#\d+/i;
+            const branch = pr.head.ref;
+            const ref = branch.match(/(?:^|[/_-])(?:issue|issues|gh)[-_]?(\d+)(?:[/_-]|$)/i)
+              || branch.match(/^(\d+)-/);
+
+            if (!closes.test(body) && ref) {
+              const issue_number = Number(ref[1]);
+              try {
+                const { data: issue } = await github.rest.issues.get({
+                  owner, repo, issue_number,
+                });
+                // #N addresses both issues and PRs; only an open issue is a
+                // thing this PR can close.
+                if (!issue.pull_request && issue.state === 'open') {
+                  await github.rest.pulls.update({
+                    owner, repo, pull_number: number,
+                    body: `${body.trimEnd()}\n\nCloses #${issue_number}`.trimStart(),
+                  });
+                  core.info(`linked: #${issue_number}`);
+                }
+              } catch (e) {
+                core.info(`no linkable issue #${issue_number}: ${e.message}`);
+              }
+            }
