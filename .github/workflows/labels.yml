@@ -1,0 +1,57 @@
+name: labels
+
+# .github/labels.json is the repository's DECLARED label set. This job proves it
+# is also the LIVE one.
+#
+# Without it the manifest rots: someone renames a label in the GitHub UI, the
+# manifest still lists the old name, and test/labeler-config.test.mjs happily
+# confirms that labeler.yml only applies declared labels — all three agreeing
+# with each other and none of them with GitHub. The offline test checks
+# declared-vs-applied; this checks declared-vs-live. Between them, "every label
+# this repo applies actually exists" is proven rather than asserted.
+#
+# A standalone workflow rather than a job inside ci.yml: it is one API call with
+# a read-only token, it has nothing to do with building or testing the product,
+# and keeping it separate means the same file drops into every repo in the family
+# regardless of what that repo's ci.yml looks like.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    paths:
+      - '.github/labels.json'
+      - '.github/labeler.yml'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/workflows/labels.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  manifest:
+    name: manifest matches the repo
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      issues: read # gh label list
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: The declared label set is the live label set
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label list --repo "$GITHUB_REPOSITORY" --limit 200 --json name --jq '.[].name' \
+            | LC_ALL=C sort > live.txt
+          node -e "JSON.parse(require('fs').readFileSync('.github/labels.json','utf8')).forEach(l => console.log(l.name))" \
+            | LC_ALL=C sort > declared.txt
+          if ! diff -u declared.txt live.txt; then
+            echo "::error::.github/labels.json and the repository's labels differ (- declared only, + live only). Change the label on GitHub AND in the manifest together."
+            exit 1
+          fi
+          echo "$(wc -l < live.txt) labels, manifest matches"
