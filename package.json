@@ -12,5 +12,8 @@
   },
   "devDependencies": {
     "@jazzer.js/core": "^4.0.0"
+  },
+  "overrides": {
+    "browserslist": "^4.28.7"
   }
 }
