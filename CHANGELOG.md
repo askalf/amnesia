@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- README rewritten as the project's trust document. Corrects drift (Presearch
+  is no longer a live engine, the canary is daily, the SPA is 44 KB), documents
+  the 3-minute `/search` edge cache that shipped in #50, and replaces the
+  competitor comparison with a "who sees what" threat model plus a
+  guarantee / enforced-by / verify-it table whose every command was run against
+  the live endpoints. States two limits plainly: the CSP carries
+  `'unsafe-inline'` for the single-file SPA, and VPN egress is enforced by
+  `HTTP_PROXY` configuration rather than a network namespace. Drops an
+  unverifiable "real-browser injection tests" claim (no such test is in the
+  tree). Adds a hero capture of the live UI (`.github/readme-hero.webp`, 14 KB) and
+  a working self-host path that names the `API_BASE` line to change.
+
 ### Added
 - Continuous fuzzing of the API gate's auth boundary (ClusterFuzzLite +
   Jazzer.js). `fuzz/session.fuzz.js` pins the Worker's signed-session-cookie
