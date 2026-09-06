@@ -13,6 +13,7 @@ A privacy meta-search engine with no accounts, no ads, no analytics, and no serv
 [![CodeQL](https://github.com/askalf/amnesia/actions/workflows/codeql.yml/badge.svg)](https://github.com/askalf/amnesia/actions/workflows/codeql.yml)
 [![canary](https://github.com/askalf/amnesia/actions/workflows/canary.yml/badge.svg)](https://github.com/askalf/amnesia/actions/workflows/canary.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/askalf/amnesia/badge)](https://scorecard.dev/viewer/?uri=github.com/askalf/amnesia)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14490/badge)](https://www.bestpractices.dev/projects/14490)
 
 [What sets it apart](#what-sets-it-apart) · [Who sees what](#who-sees-what) · [Guarantees](#guarantees-and-how-to-check-them) · [Architecture](#architecture) · [Security](#security) · [Engines](#engine-coverage) · [Self-host](#self-host)
 
