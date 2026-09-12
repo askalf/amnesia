@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- VPN by topology, as an alternative stack shape: `infra/docker-compose.vpn.yml`
+  runs its own gluetun and puts SearXNG inside its network namespace
+  (`network_mode: "service:gluetun"`), so the only route out is the tunnel and
+  gluetun's firewall drops everything while the tunnel is down. Verified on the
+  host with the tunnel deliberately down: from inside the namespace DNS fails
+  and a direct-IP request times out, while the same image on the default
+  bridge leaves by the host IP. `hostname: gluetun` keeps
+  `searxng/settings.yml`'s proxy line working unchanged (it now names the
+  co-located proxy). Same container names, cache volume and loopback port as
+  the proxy shape, so cloudflared and the canary are untouched; cutover and
+  rollback are two `docker compose` lines each (DEPLOY.md 1b). The live
+  instance stays on the proxy shape until a second VPN session is provisioned,
+  and the README says so.
 - CSP no longer carries `'unsafe-inline'`. The page's one `<script>` and one
   `<style>` are allowed by SHA-256 hash; the four inline `onclick` handlers
   became `data-action` attributes behind one delegated listener, and the two
