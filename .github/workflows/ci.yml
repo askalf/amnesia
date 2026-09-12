@@ -48,6 +48,12 @@ jobs:
           fi
           echo "✓ HTML structure valid"
 
+      - name: CSP hashes match the SPA
+        # src/_headers allows the page's inline <script>/<style> by hash. A
+        # change to either block without regenerating the header ships a
+        # page whose script the browser refuses to run — "search does
+        # nothing", no error a user would see. Fix: node scripts/csp-hashes.mjs --write
+        run: node scripts/csp-hashes.mjs --check
       - name: Check for scripts
         run: |
           # Verify scripts are present (should have search functionality)
