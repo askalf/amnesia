@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- CSP no longer carries `'unsafe-inline'`. The page's one `<script>` and one
+  `<style>` are allowed by SHA-256 hash; the four inline `onclick` handlers
+  became `data-action` attributes behind one delegated listener, and the two
+  inline `style` attributes became a CSS rule. `scripts/csp-hashes.mjs`
+  generates the header from the HTML (`--write`) and CI refuses a commit where
+  the two disagree (`--check`), because a stale hash would ship a page whose
+  script the browser silently refuses to run. Verified in a real browser under
+  the new header: zero `securitypolicyviolation` events across page load, a
+  full results render, and every button path. Cloudflare's Bot Fight Mode
+  injects its own inline script, which this CSP refuses; nothing here depends
+  on it, and the README says so.
+
 ### Changed
 - README rewritten as the project's trust document. Corrects drift (Presearch
   is no longer a live engine, the canary is daily, the SPA is 44 KB), documents
