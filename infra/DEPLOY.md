@@ -37,6 +37,51 @@ docker exec amnesia-searxng wget -qO- http://127.0.0.1:8080/healthz   # -> OK
 docker exec amnesia-searxng sh -c 'curl -s -x http://gluetun:8888 https://ifconfig.me'
 ```
 
+This is the proxy shape: the VPN is a setting SearXNG is asked to honour. For
+the shape where it cannot do otherwise, see 1b.
+
+## 1b. Backend, hard shape — VPN by topology (`docker-compose.vpn.yml`)
+
+`docker-compose.yml` puts SearXNG on the platform's network and *tells* it to
+use the platform gluetun's proxy; an engine that ignored the proxy setting
+would leave by the host IP. `docker-compose.vpn.yml` is the other shape: its
+own gluetun, and SearXNG inside that container's network namespace
+(`network_mode: "service:gluetun"`). There is then exactly one way out, the
+tunnel, and gluetun's firewall drops everything while the tunnel is down — a
+VPN outage is a search outage, never a leak. The stack is self-contained and
+touches nothing in the platform stack.
+
+Verified on the host with the tunnel deliberately down (a bogus key): from
+inside the namespace a lookup of ifconfig.me cannot resolve and a request to
+1.1.1.1 by address times out; the same image on the default bridge answers
+with the host IP.
+
+```sh
+# One-time: generate a WireGuard configuration for THIS stack in the Proton
+# account (Downloads → WireGuard configuration). One config = one device; do
+# not reuse the platform's key, the two sessions would fight.
+# The env file gains:
+#   AMNESIA_WIREGUARD_PRIVATE_KEY = <private key from that config>
+#   AMNESIA_VPN_COUNTRIES         = United States   (optional; default)
+
+cd /root/amnesia
+docker compose -f docker-compose.yml down            # the proxy shape; keeps the cache volume
+docker compose -f docker-compose.vpn.yml up -d
+docker compose -f docker-compose.vpn.yml ps          # gluetun healthy, then searxng healthy
+
+# Both halves of the guarantee, on the live stack:
+docker exec amnesia-searxng sh -c 'wget -qO- https://ifconfig.me'          # the VPN exit — no proxy flag
+docker stop amnesia-gluetun
+docker exec amnesia-searxng sh -c 'wget -qO- -T 5 https://ifconfig.me'     # nothing: no route while the tunnel is down
+docker start amnesia-gluetun && docker compose -f docker-compose.vpn.yml restart searxng
+```
+
+Same container names, same `amnesia_searxng_cache` volume, same `127.0.0.1:8081`
+(now published by gluetun), so cloudflared and the canary need no change.
+Roll back with the two `docker compose` lines in the other order. Known
+behaviour: recreating the gluetun container empties searxng's namespace —
+`docker compose -f docker-compose.vpn.yml up -d` restarts searxng too.
+
 ## 2. DNS — point api.amnesia.tax at the tunnel
 
 ```sh

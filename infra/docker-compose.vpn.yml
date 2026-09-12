@@ -1,0 +1,120 @@
+# amnesia — the VPN-by-topology shape: SearXNG lives INSIDE the VPN
+# container's network namespace, so an engine request that ignored every proxy
+# setting still has exactly one way out, the tunnel. This is the hard guarantee
+# the README's caveat names; docker-compose.yml is the softer shape the live
+# instance ran first (SearXNG on a shared network, told to use a proxy).
+#
+# How it holds:
+#   - `network_mode: "service:gluetun"` gives searxng no interface of its own.
+#   - gluetun's firewall drops everything that is not the tunnel (its default),
+#     and blocks ALL egress while the tunnel is down — so a VPN outage is a
+#     search outage, never a leak by the host IP.
+#   - `hostname: gluetun` makes `gluetun:8888` resolve inside the shared
+#     namespace, so searxng/settings.yml's proxy line keeps working unchanged;
+#     it now points at the co-located proxy, and the tunnel is under it either way.
+#   - The published port sits on gluetun (a namespace-sharing container cannot
+#     publish its own); FIREWALL_INPUT_PORTS lets 8080 in from the host side.
+#
+# Known behaviour: if the gluetun container is recreated, searxng keeps its
+# old, now-empty namespace and must be restarted (`docker compose restart
+# searxng`); a plain `docker compose up -d` after a change does that for you.
+#
+# This stack is self-contained — its own ProtonVPN WireGuard session, its own
+# gluetun — and does not touch the platform stack or its network.
+#
+#   docker compose -f docker-compose.vpn.yml --env-file .env up -d
+#
+# Verify (both halves of the guarantee):
+#   docker exec amnesia-searxng sh -c 'curl -s https://ifconfig.me'     # the VPN exit, with NO proxy flag
+#   docker stop amnesia-gluetun; docker exec amnesia-searxng sh -c 'curl -s -m 5 https://ifconfig.me'   # nothing — no route while the tunnel is down
+
+services:
+  gluetun:
+    # Same digest the platform's gluetun runs (v3.40.0).
+    image: qmcgaw/gluetun@sha256:2b42bfa046757145a5155acece417b65b4443c8033fb88661a8e9dcf7fda5a00
+    container_name: ${AMNESIA_NAME_PREFIX:-amnesia}-gluetun
+    hostname: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      # Loopback-only, for the host cloudflared: this is searxng's :8080,
+      # reachable here because searxng shares this namespace.
+      - "127.0.0.1:${AMNESIA_PORT:-8081}:8080"
+    environment:
+      VPN_SERVICE_PROVIDER: protonvpn
+      VPN_TYPE: wireguard
+      # A WireGuard config generated for THIS stack in the Proton account
+      # (Downloads → WireGuard configuration). One config, one device: do not
+      # reuse the platform's key, the two sessions would fight.
+      WIREGUARD_PRIVATE_KEY: ${AMNESIA_WIREGUARD_PRIVATE_KEY}
+      SERVER_COUNTRIES: ${AMNESIA_VPN_COUNTRIES:-United States}
+      # The co-located proxy searxng/settings.yml already points at.
+      HTTPPROXY: "on"
+      HTTPPROXY_LISTENING_ADDRESS: ":8888"
+      HTTPPROXY_STEALTH: "on"
+      # Let the published searxng port in through gluetun's firewall.
+      FIREWALL_INPUT_PORTS: "8080"
+      # DNS over TLS inside the tunnel; never the host's resolver.
+      DOT: "on"
+      DOT_PROVIDERS: cloudflare
+      DNS_KEEP_NAMESERVER: "off"
+      HEALTH_TARGET_ADDRESS: cloudflare.com:443
+      HEALTH_VPN_DURATION_INITIAL: 30s
+      HEALTH_SUCCESS_WAIT_DURATION: 10s
+      TZ: UTC
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  searxng:
+    # Pinned to the same known-good digest the platform stack runs.
+    image: searxng/searxng@sha256:1a143665b6445079d1cd5b6facdf599d22ac9c29698dd2e7d15eb9b5f5a854cc
+    container_name: ${AMNESIA_NAME_PREFIX:-amnesia}-searxng
+    # No interface of its own: every packet is gluetun's problem.
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      SEARXNG_SECRET: ${AMNESIA_SEARXNG_SECRET}
+      SEARXNG_BASE_URL: https://api.amnesia.tax/
+    volumes:
+      - ./searxng:/etc/searxng:ro
+      - searxng_cache:/var/cache/searxng
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777,size=32m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+volumes:
+  searxng_cache:
+    name: ${AMNESIA_NAME_PREFIX:-amnesia}_searxng_cache
