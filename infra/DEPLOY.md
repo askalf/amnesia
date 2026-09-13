@@ -37,10 +37,14 @@ docker exec amnesia-searxng wget -qO- http://127.0.0.1:8080/healthz   # -> OK
 docker exec amnesia-searxng sh -c 'curl -s -x http://gluetun:8888 https://ifconfig.me'
 ```
 
-This is the proxy shape: the VPN is a setting SearXNG is asked to honour. For
-the shape where it cannot do otherwise, see 1b.
+This is the proxy shape, kept as the rollback path. The live stack runs 1b,
+where SearXNG cannot leave except by the tunnel.
 
-## 1b. Backend, hard shape — VPN by topology (`docker-compose.vpn.yml`)
+## 1b. Backend, the live shape — VPN by topology (`docker-compose.vpn.yml`)
+
+> **This is what runs in production since 2026-09-13.** Section 1 above is the
+> older proxy shape, kept as the rollback path.
+
 
 `docker-compose.yml` puts SearXNG on the platform's network and *tells* it to
 use the platform gluetun's proxy; an engine that ignored the proxy setting
