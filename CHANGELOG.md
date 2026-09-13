@@ -18,9 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `searxng/settings.yml`'s proxy line working unchanged (it now names the
   co-located proxy). Same container names, cache volume and loopback port as
   the proxy shape, so cloudflared and the canary are untouched; cutover and
-  rollback are two `docker compose` lines each (DEPLOY.md 1b). The live
-  instance stays on the proxy shape until a second VPN session is provisioned,
-  and the README says so.
+  rollback are two `docker compose` lines each (DEPLOY.md 1b). **Live since
+  2026-09-13** on its own ProtonVPN session: egress leaves by the VPN exit with
+  no proxy flag (163.5.171.6, US, versus the host's own address), site 200,
+  gate 401, a real browser search returns results, and the README's VPN caveat
+  is retired.
 - CSP no longer carries `'unsafe-inline'`. The page's one `<script>` and one
   `<style>` are allowed by SHA-256 hash; the four inline `onclick` handlers
   became `data-action` attributes behind one delegated listener, and the two
