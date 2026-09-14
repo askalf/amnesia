@@ -10,3 +10,6 @@ Thumbs.db
 
 # wrangler local cache
 .wrangler/
+
+# Pages build output (scripts/build-site.sh); assembled at build time, never committed
+deploy/
