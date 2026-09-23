@@ -1,3 +1,10 @@
+# GENERATED — do not edit. Source: infra/searxng/settings.yml
+# Regenerate: node scripts/searxng-proxy-settings.mjs --write
+#
+# The rollback (proxy) shape's settings, mounted by infra/docker-compose.yml:
+# the live settings plus `outgoing.proxies`, because in that shape the proxy
+# setting is the only thing sending engine traffic through the VPN.
+
 # SearXNG settings — PUBLIC instance behind https://api.amnesia.tax
 #
 # Security/perf-tuned 2026-05-30. Authoritative config (regenerated clean to
@@ -72,6 +79,11 @@ ui:
   infinite_scroll: false
 
 outgoing:
+  # Rollback shape only: SearXNG shares the platform network here, so this is
+  # what sends every engine request through the platform gluetun's ProtonVPN.
+  proxies:
+    all://:
+      - http://gluetun:8888
   # A search waits for its slowest selected engine, so the deadline is the
   # largest timeout among them. Enabled engines share this one (the few whose
   # upstream default is longer are pinned to it below); healthy engines answer
