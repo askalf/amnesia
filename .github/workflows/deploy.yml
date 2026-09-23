@@ -30,14 +30,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Prepare deploy directory
-        run: |
-          mkdir -p deploy
-          cp src/amnesia-search.html deploy/index.html
-          cp src/og.png deploy/og.png 2>/dev/null || true
-          cp src/robots.txt deploy/robots.txt 2>/dev/null || true
-          cp src/sitemap.xml deploy/sitemap.xml 2>/dev/null || true
-          cp src/_headers deploy/_headers 2>/dev/null || true
-          cp -r src/fonts deploy/fonts   # self-hosted Space Mono (hard fail if missing — the CSP no longer allows Google Fonts)
+        # One file list for both deploy paths (this workflow and the Pages Git
+        # integration). A second copy of the list here is how /opensearch.xml
+        # went missing from the live site.
+        run: bash scripts/build-site.sh
 
       - name: Deploy amnesia.tax
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4
