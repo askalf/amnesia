@@ -76,6 +76,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on it, and the README says so.
 
 ### Changed
+- **Faster searches, bounded by 3 s instead of 6 s.** A search waits for its
+  slowest engine, and the main engines carried a 6 s timeout above the 4 s
+  default; every enabled engine now shares a 3 s timeout (`max_request_timeout`
+  5 s), and `retries` is 0, since a retry runs inside the same deadline. The
+  global `retry_on_http_error: true` is gone: SearXNG only reads it per engine,
+  so it never did anything.
+- **No proxy hop on the live stack.** SearXNG already runs inside gluetun's
+  network namespace, so `outgoing.proxies` (gluetun:8888) only put an HTTP
+  CONNECT relay in front of every engine connection. The live settings drop it
+  and gluetun's HTTP proxy is off. The rollback shape still needs it (SearXNG
+  ignores `HTTP_PROXY` from the environment), so `docker-compose.yml` mounts
+  `infra/searxng-proxy/settings.yml`, generated from the live file by
+  `scripts/searxng-proxy-settings.mjs`, and CI refuses a commit where they drift.
+- **Blocked providers' other verticals off.** `use_default_settings` keeps every
+  upstream engine that is on by default, so Google, Qwant, Startpage and Mojeek
+  image, news and video engines still ran although those providers' web
+  engines were disabled for refusing VPN IPs. They are disabled by name now.
+- **SearXNG metrics on.** `/stats` and `/stats/errors` show per-engine timing,
+  timeouts and errors, reachable only on the host's loopback port: the Worker
+  forwards nothing but `/search` and `/autocompleter`.
 - README rewritten as the project's trust document. Corrects drift (Presearch
   is no longer a live engine, the canary is daily, the SPA is 44 KB), documents
   the 3-minute `/search` edge cache that shipped in #50, and replaces the
