@@ -944,12 +944,16 @@
     let currentPage = 1;
     let currentQuery = '';
 
-    // API origin: same-origin in local dev, the Turnstile-gated worker in prod.
+    // API origin: the Turnstile-gated worker on the hosted site (amnesia.tax),
+    // same-origin everywhere else — local dev and the self-host image
+    // (ghcr.io/askalf/amnesia), where SearXNG answers /search on this origin.
+    // An empty API_BASE also skips Turnstile entirely (see warmSession/apiGet).
+    // www.amnesia.tax 301s to the apex, so the apex is the only hosted name.
     // MUST stay above the page-load warmSession() call below — as a `const` it sits
     // in its temporal dead zone until this line runs, so a lower declaration throws
     // "Cannot access 'API_BASE' before initialization" the moment warmSession() reads
     // it, halting the whole script. Regression guard: keep this here.
-    const API_BASE = window.location.hostname === 'localhost' ? '' : 'https://api.amnesia.tax';
+    const API_BASE = window.location.hostname === 'amnesia.tax' ? 'https://api.amnesia.tax' : '';
 
     // Theme toggle
     const themeToggle = document.getElementById('themeToggle');
