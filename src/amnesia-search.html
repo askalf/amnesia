@@ -1274,7 +1274,7 @@
           if (!imgUrl || seen.has(imgUrl)) return;
           seen.add(imgUrl);
           html += '<div class="image-item"><a href="' + escapeAttr(linkUrl) + '" target="_blank" rel="noopener">';
-          html += '<img src="' + escapeAttr(imgUrl) + '" alt="' + escapeAttr(r.title || '') + '" loading="lazy" onerror="this.parentElement.parentElement.style.display=\'none\'">';
+          html += '<img src="' + escapeAttr(imgUrl) + '" alt="' + escapeAttr(r.title || '') + '" loading="lazy">';
           html += '<div class="image-label">' + escapeHtml(truncate(r.title || '', 60)) + '</div>';
           html += '</a></div>';
         });
@@ -1362,6 +1362,18 @@
         }
       }
     });
+
+    // A thumbnail that fails to load hides its whole tile. Same reason as
+    // above: an inline onerror attribute is refused by the hash CSP, so the
+    // image grid used to keep broken tiles. Load errors don't bubble, hence
+    // the capture phase.
+    document.addEventListener('error', (ev) => {
+      const img = ev.target;
+      if (img instanceof HTMLImageElement) {
+        const tile = img.closest('.image-item');
+        if (tile) tile.style.display = 'none';
+      }
+    }, true);
 
     function escapeHtml(s) {
       const d = document.createElement('div');
