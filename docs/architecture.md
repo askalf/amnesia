@@ -10,7 +10,7 @@ flowchart LR
     B --> W["API-gate Worker<br/>Turnstile once → HMAC session cookie<br/>edge cache: search 3 m · autocomplete 6 h"]
     W -->|"secret header,<br/>WAF-locked origin"| T["Cloudflare Tunnel"]
     T --> S["SearXNG<br/>hardened container"]
-    S -->|"HTTP(S)_PROXY"| V["Gluetun<br/>WireGuard / ProtonVPN"]
+    S -->|"no interface of its own:<br/>runs in Gluetun's namespace"| V["Gluetun<br/>WireGuard / ProtonVPN"]
     V --> E["search engines"]
 ```
 
@@ -22,7 +22,8 @@ flowchart LR
 ## Security
 
 - **Fuzzing** — [`fuzz/session.fuzz.js`](../fuzz/session.fuzz.js) pins the cookie contract: never throws on a hostile value, never verifies a value the operator's secret did not sign, always round-trips under its own secret and never under another. Runs weekly in ClusterFuzzLite and locally via `npm run fuzz`. The target is async (WebCrypto HMAC), so it runs in Jazzer's async mode.
-- **Static analysis** — CodeQL on every push and PR; OpenSSF Scorecard weekly. All actions are SHA-pinned.
+- **Tests** — [`test/`](../test/) drives the Worker's real default export with the Workers globals stubbed (fail-closed, cookie forgery and expiry, the Turnstile hostname check, CORS, an edge-cache key that holds no cookie, token or IP) and runs the SPA's URL guards from the page's own bytes. `npm test`, zero dependencies, on every PR.
+- **Static analysis** — CodeQL on every push and PR; OpenSSF Scorecard weekly and on every push to `main`, plus a PR job that scores the four file-based checks (pinning, token permissions, dangerous workflows, binaries) on the PR's own tree and fails below 10. All actions are SHA-pinned.
 - **Runner isolation** — CI for fork-reachable workflows runs on GitHub-hosted runners. Only the deploy jobs, which run from `main` after review, touch the self-hosted deploy host.
 - **Deploys are serialised** — Pages and Worker deploys queue rather than cancel, so two pushes to `main` never land out of order or half-applied.
 - **Disclosure** — see [`SECURITY.md`](../SECURITY.md). Please do not open a public issue for a vulnerability.
