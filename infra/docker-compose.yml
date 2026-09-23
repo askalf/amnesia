@@ -11,7 +11,10 @@
 #
 # Outbound search-engine traffic egresses through the platform's ProtonVPN
 # gluetun HTTP proxy (gluetun:8888) over the shared external `askalf-net`
-# network, so search providers never see the host's datacenter IP.
+# network, so search providers never see the host's datacenter IP. The proxy
+# comes from searxng-proxy/settings.yml (generated from searxng/settings.yml by
+# scripts/searxng-proxy-settings.mjs): SearXNG does not honour the HTTP_PROXY
+# env below for engine requests, so the settings file is what enforces it.
 #
 # Deployed to /root/amnesia on the Hetzner host (see DEPLOY.md). The host's
 # cloudflared (systemd) routes api.amnesia.tax -> 127.0.0.1:8081.
@@ -32,7 +35,7 @@ services:
       HTTPS_PROXY: http://gluetun:8888
       NO_PROXY: localhost,127.0.0.1
     volumes:
-      - ./searxng:/etc/searxng:ro
+      - ./searxng-proxy:/etc/searxng:ro
       - amnesia_searxng_cache:/var/cache/searxng
     networks:
       - askalf-net   # external — provides DNS for gluetun:8888
