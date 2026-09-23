@@ -14,14 +14,13 @@
 // The hosted Worker drops Server-Timing, so this only works against a
 // SearXNG you run yourself.
 //
-// The one change to the settings: production sends engine traffic through
-// gluetun:8888, which does not exist here, so that proxy is removed, or
-// replaced with --proxy. Engines therefore see this machine's IP, not a
-// ProtonVPN exit: expect different blocking (Google, Qwant) and a shorter
-// network path than the hosted instance. Use --proxy to measure through a VPN
-// or an egress proxy; a loopback proxy switches the container to host
-// networking so it can reach it, and --ca adds that proxy's CA to the
-// container's trust store.
+// The one change to the settings: a gluetun:8888 proxy, which does not exist
+// here, is removed, and --proxy is added when given. Without --proxy, engines
+// see this machine's IP, not a ProtonVPN exit: expect different blocking
+// (Google, Qwant) and a shorter network path than the hosted instance. Use
+// --proxy to measure through a VPN or an egress proxy; a loopback proxy
+// switches the container to host networking so it can reach it, and --ca adds
+// that proxy's CA to the container's trust store.
 //
 // Needs Docker and Node 20+. Zero dependencies.
 
@@ -74,10 +73,13 @@ function composeImage() {
 }
 
 function patchSettings(text, proxy) {
-  const block = /^  proxies:\n    all:\/\/:\n      - http:\/\/gluetun:8888\n/m;
-  if (!block.test(text)) throw new Error('settings.yml: expected the gluetun proxies block under outgoing:');
-  const repl = proxy ? `  proxies:\n    all://:\n      - ${proxy}\n` : '';
-  return text.replace(block, repl);
+  // The rollback shape pins gluetun:8888 here; the VPN-namespace shape has no
+  // proxy at all. Accept either, then add --proxy if one was given.
+  let out = text.replace(/^  proxies:\n    all:\/\/:\n      - http:\/\/gluetun:8888\n/m, '');
+  if (/^  proxies:/m.test(out)) throw new Error('settings.yml: unexpected outgoing.proxies block; edit a copy and pass --settings');
+  if (!proxy) return out;
+  const block = `  proxies:\n    all://:\n      - ${proxy}\n`;
+  return /^outgoing:\n/m.test(out) ? out.replace(/^outgoing:\n/m, 'outgoing:\n' + block) : out + '\noutgoing:\n' + block;
 }
 
 function isLoopback(url) {
