@@ -13,10 +13,12 @@ on:
   schedule:
     - cron: '23 6 * * 1' # weekly, Monday 06:23 UTC (staggered off the :00 grid)
 
-# Never let two analyses of the same ref pile up; cancel superseded PR runs but
-# let push/schedule runs finish so a main-branch result is never dropped.
+# A PR's runs share one group per branch, so a new push cancels the superseded
+# run. Push and schedule runs each get their own group (the run id): GitHub keeps
+# only one pending run per group, so a shared group would let a newer push
+# replace a queued default-branch run.
 concurrency:
-  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
