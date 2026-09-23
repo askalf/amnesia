@@ -4,7 +4,7 @@ Two moving parts:
 
 | Piece | Where | Serves |
 |-------|-------|--------|
-| **Front-end** | Cloudflare Pages project `amnesia-site` (deployed from `src/` by `.github/workflows/deploy.yml`) | `https://amnesia.tax` |
+| **Front-end** | Cloudflare Pages project `amnesia-site` (built from `main` by the Pages Git integration) | `https://amnesia.tax` |
 | **Backend** | This `infra/` stack on the Hetzner host at `/root/amnesia/` | `https://api.amnesia.tax` |
 
 The front-end (`src/amnesia-search.html`, line ~945) calls
@@ -121,9 +121,11 @@ On zone **amnesia.tax**:
 
 - Bind custom domain `amnesia.tax` (and `www`) to Pages project `amnesia-site`
   (account `dfdf9f7ec6fe9f816bd9cdc6f2469eca`). Root uses CNAME flattening.
-- Deploy: push to `main` → `deploy.yml` runs `wrangler pages deploy` with the
-  repo's `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secrets. Confirm those
-  secrets are still valid (`gh run watch` the deploy).
+- Deploy: the Pages project's own Git integration builds every push to `main`
+  (build command `bash scripts/build-site.sh`, output `deploy`); watch it in the
+  Pages dashboard. No Actions workflow deploys the front-end. The repo's
+  `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secrets now serve only the
+  Worker deploy (`deploy-worker.yml`) and the canary.
 
 ## 6. Verify end-to-end
 
