@@ -110,8 +110,35 @@ describe('escapeAttr', () => {
   });
 });
 
+/**
+ * Split the page into its inline <tag> blocks and everything else, by string
+ * index rather than a tag regex: case-insensitive, and an end tag may carry
+ * whitespace before its '>' (</script >). This reads our own page in a test;
+ * it sanitizes nothing.
+ */
+function splitBlocks(src, tag) {
+  const lower = src.toLowerCase();
+  const inner = [];
+  let outside = '';
+  let at = 0;
+  for (;;) {
+    let open = lower.indexOf(`<${tag}`, at);
+    while (open >= 0 && !/[\s>]/.test(lower[open + tag.length + 1] ?? '')) open = lower.indexOf(`<${tag}`, open + 1);
+    if (open < 0) break;
+    const openEnd = lower.indexOf('>', open);
+    const close = lower.indexOf(`</${tag}`, openEnd);
+    const closeEnd = lower.indexOf('>', close);
+    assert.ok(openEnd > 0 && close > 0 && closeEnd > 0, `unterminated <${tag}> block`);
+    outside += src.slice(at, open);
+    inner.push(src.slice(openEnd + 1, close));
+    at = closeEnd + 1;
+  }
+  return { inner, outside: outside + src.slice(at) };
+}
+
 describe('page contract', () => {
-  const markup = HTML.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
+  const scripts = splitBlocks(HTML, 'script');
+  const markup = splitBlocks(scripts.outside, 'style').outside;
 
   test('is a complete HTML document', () => {
     assert.match(HTML, /^<!DOCTYPE html>/i);
@@ -132,7 +159,8 @@ describe('page contract', () => {
     // Results are built as strings and set via innerHTML; a handler attribute
     // in one of them is refused by the hash CSP with no visible error (the
     // image grid's hide-on-error once died exactly this way).
-    const script = HTML.match(/<script>([\s\S]*?)<\/script>/)[1];
+    const script = scripts.inner.join('\n');
+    assert.ok(script.includes('function safeUrl('), 'found the page script');
     const generated = [...script.matchAll(/['"`][^'"`]*<[a-z][^'"`]*\son[a-z]+=/gi)].map((m) => m[0]);
     assert.deepEqual(generated, []);
   });

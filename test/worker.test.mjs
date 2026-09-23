@@ -44,7 +44,7 @@ beforeEach(() => {
   globalThis.fetch = async (input, init = {}) => {
     const url = typeof input === 'string' ? input : input.url;
     calls.push({ url, init });
-    if (url.startsWith('https://challenges.cloudflare.com/')) {
+    if (new URL(url).origin === 'https://challenges.cloudflare.com') {
       if (siteverify instanceof Error) throw siteverify;
       return new Response(JSON.stringify(siteverify), { headers: { 'content-type': 'application/json' } });
     }
@@ -76,8 +76,9 @@ async function call(path, { method = 'GET', headers = {}, env = ENV } = {}) {
   return { res, status: res.status, body, json: () => JSON.parse(body), header: (h) => res.headers.get(h) };
 }
 
-const originCalls = () => calls.filter((c) => c.url.startsWith(ORIGIN));
-const verifyCalls = () => calls.filter((c) => c.url.startsWith('https://challenges.cloudflare.com/'));
+const originOf = (url) => new URL(url).origin;
+const originCalls = () => calls.filter((c) => originOf(c.url) === ORIGIN);
+const verifyCalls = () => calls.filter((c) => originOf(c.url) === 'https://challenges.cloudflare.com');
 
 /** The cookie VALUE (exp.sig) from a Set-Cookie line. */
 const cookieValue = (setCookie) => setCookie.split(';')[0].slice(COOKIE_NAME.length + 1);
