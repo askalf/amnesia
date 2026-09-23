@@ -1,0 +1,312 @@
+# SearXNG settings — the SELF-HOST image (ghcr.io/askalf/amnesia).
+#
+# The hosted instance's tuning (infra/searxng/settings.yml) minus the parts
+# that only make sense on amnesia.tax:
+#   - no outgoing proxy: the hosted instance egresses through ProtonVPN via
+#     gluetun; here engine traffic leaves from YOUR host's IP. To put a VPN
+#     under it, run the image inside a gluetun network namespace — the shape
+#     infra/docker-compose.vpn.yml uses.
+#   - the engines amnesia.tax disables only because they block datacenter/VPN
+#     exit IPs (google, mojeek, qwant, startpage, yahoo, wolframalpha, google
+#     news, google scholar) are ON. From an IP they accept, they answer; from
+#     one they refuse, SearXNG suspends them (ban_time_on_fail) and moves on.
+#   - no base_url: SearXNG derives it from the request (set SEARXNG_BASE_URL
+#     when a reverse proxy rewrites the host).
+#   - secret_key is the literal ultrasecretkey on purpose: SearXNG refuses to
+#     start with it, and image/entrypoint.sh always supplies SEARXNG_SECRET
+#     (random per container). A run that bypasses the entrypoint fails closed
+#     instead of signing image-proxy URLs with a key published here.
+#
+# limiter/public_instance are OFF, as on the hosted instance, where abuse
+# control is Cloudflare + the Turnstile Worker. This image has no gate: it is
+# meant for one person or a household. Exposed to the internet, put a gate or
+# a rate limit in front of it.
+#
+# Engines permanently broken for everyone (ask, yep, mwmbl, wiby) and
+# presearch (its two-step flow ignores the engine timeout and pins every
+# search at ~5 s when it stalls) stay off. Weights and timeouts are the
+# hosted instance's, unchanged.
+
+use_default_settings:
+  engines:
+    remove:
+      - ahmia
+      - torch
+
+general:
+  instance_name: "amnesia"
+  privacypolicy_url: false
+  donation_url: false
+  contact_url: false
+  enable_metrics: false
+
+search:
+  safe_search: 0
+  autocomplete: "duckduckgo"
+  default_lang: "en"
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 120
+  formats:
+    - html
+    - json
+  suspended_times:
+    SearxEngineAccessDenied: 300
+    SearxEngineCaptcha: 600
+    SearxEngineTooManyRequests: 120
+
+server:
+  secret_key: "ultrasecretkey"   # replaced by SEARXNG_SECRET — see the header
+  limiter: false
+  public_instance: false
+  image_proxy: true              # result thumbnails load via this origin, not from the engines
+  method: "GET"
+  http_protocol_version: "1.1"
+  default_http_headers:
+    X-Content-Type-Options: nosniff
+    X-Download-Options: noopen
+    X-Robots-Tag: noindex, nofollow
+    Referrer-Policy: no-referrer
+
+ui:
+  static_use_hash: true
+  default_theme: simple
+  query_in_title: true
+  infinite_scroll: false
+
+outgoing:
+  request_timeout: 4.0
+  max_request_timeout: 8.0
+  useragent_suffix: ""
+  pool_connections: 100
+  pool_maxsize: 50
+  keepalive_expiry: 30.0
+  enable_http2: true
+  retries: 1
+  retry_on_http_error: true
+
+engines:
+  # ---- GENERAL ----
+  - name: brave
+    disabled: false
+    weight: 3.0
+    timeout: 6.0
+
+  - name: bing
+    disabled: false
+    weight: 2.5
+    timeout: 6.0
+
+  - name: duckduckgo
+    disabled: false
+    weight: 2.5
+    timeout: 6.0
+
+  - name: google
+    disabled: false
+    weight: 0.5
+    timeout: 5.0
+    use_mobile_ui: true
+
+  - name: startpage
+    disabled: false
+    weight: 2.0
+    timeout: 8.0
+
+  - name: qwant
+    disabled: false
+    weight: 0.5
+    timeout: 6.0
+
+  - name: yahoo
+    disabled: false
+    weight: 1.5
+    timeout: 6.0
+
+  - name: mojeek
+    disabled: false
+    weight: 0.5
+    timeout: 6.0
+
+  - name: yandex
+    disabled: false
+    weight: 1.0
+    timeout: 6.0
+
+  - name: crowdview
+    disabled: false
+    weight: 0.3
+
+  - name: searchmysite
+    disabled: false
+    weight: 0.3
+
+  - name: presearch
+    disabled: true    # two-step flow ignores the engine timeout; pins searches at ~5 s when it stalls
+    weight: 1.0
+    timeout: 3.0
+
+  # ---- permanently broken, for everyone ----
+  - name: ask          # HTTP 404 on every request
+    disabled: true
+  - name: yep          # API returns 501 Not Implemented
+    disabled: true
+  - name: mwmbl        # response parser crashes (IndexError)
+    disabled: true
+  - name: wiby         # frequent timeouts, near-zero useful results
+    disabled: true
+
+  # ---- KNOWLEDGE ----
+  - name: wikipedia
+    disabled: false
+    weight: 2.0
+
+  - name: wikidata
+    disabled: false
+
+  - name: wolframalpha
+    disabled: false
+    timeout: 8.0
+
+  - name: currency
+    disabled: false
+
+  - name: ddg definitions
+    disabled: false
+
+  # ---- NEWS ----
+  - name: brave.news
+    disabled: false
+    weight: 2.5
+    timeout: 6.0
+
+  - name: bing news
+    disabled: false
+    weight: 2.0
+    timeout: 6.0
+
+  - name: google news
+    disabled: false
+    weight: 0.5
+    timeout: 6.0
+
+  - name: duckduckgo news
+    disabled: false
+    weight: 1.5
+    timeout: 6.0
+
+  - name: yahoo news
+    disabled: false
+    weight: 1.0
+    timeout: 6.0
+
+  - name: wikinews
+    disabled: false
+
+  # ---- DEV / IT ----
+  - name: github
+    disabled: false
+    weight: 2.0
+
+  - name: gitlab
+    disabled: false
+
+  - name: stackoverflow
+    disabled: false
+    weight: 2.0
+    timeout: 6.0
+
+  - name: npm
+    disabled: false
+
+  - name: pypi
+    disabled: false
+
+  - name: docker hub
+    disabled: false
+
+  - name: crates.io
+    disabled: false
+
+  - name: hackernews
+    disabled: false
+    weight: 1.5
+
+  - name: lobste.rs
+    disabled: false
+
+  - name: mdn
+    disabled: false
+
+  - name: arch linux wiki
+    disabled: false
+
+  - name: huggingface
+    disabled: false
+
+  - name: national vulnerability database
+    disabled: false
+
+  # ---- SCIENCE / ACADEMIC ----
+  - name: arxiv
+    disabled: false
+
+  - name: semantic scholar
+    disabled: false
+
+  - name: google scholar
+    disabled: false
+    weight: 1.0
+    timeout: 8.0
+
+  - name: pubmed
+    disabled: false
+
+  # ---- SOCIAL ----
+  - name: reddit
+    disabled: false
+    weight: 1.5
+    timeout: 6.0
+
+  - name: mastodon hashtags
+    disabled: false
+
+  - name: mastodon users
+    disabled: false
+
+  - name: lemmy posts
+    disabled: false
+
+  # ---- IMAGES ----
+  - name: brave.images
+    disabled: false
+    weight: 2.0
+    timeout: 6.0
+
+  - name: bing images
+    disabled: false
+    timeout: 6.0
+
+  - name: duckduckgo images
+    disabled: false
+    timeout: 6.0
+
+  - name: unsplash
+    disabled: false
+    timeout: 6.0
+
+  # ---- VIDEOS ----
+  - name: brave.videos
+    disabled: false
+    weight: 2.0
+    timeout: 6.0
+
+  - name: youtube
+    disabled: false
+    timeout: 6.0
+
+  - name: odysee
+    disabled: false
+
+  # ---- MAPS ----
+  - name: openstreetmap
+    disabled: false

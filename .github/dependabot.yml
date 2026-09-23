@@ -27,3 +27,11 @@ updates:
     directory: "/.clusterfuzzlite"
     schedule:
       interval: "weekly"
+
+  # The self-host image's SearXNG base (image/Dockerfile), digest-pinned.
+  # A bump PR runs image.yml's build + smoke test before it can merge, and
+  # the merge republishes ghcr.io/askalf/amnesia on the new base.
+  - package-ecosystem: "docker"
+    directory: "/image"
+    schedule:
+      interval: "weekly"

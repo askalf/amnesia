@@ -1,0 +1,140 @@
+name: Image
+
+# ghcr.io/askalf/amnesia: the amnesia front end and SearXNG in one container
+# (image/Dockerfile, docs/self-host.md).
+#
+# Every PR that touches the image builds it and runs image/smoke.py against
+# the running container: the page is served same-origin with a CSP whose
+# hashes match the bytes it serves, nothing loads from Cloudflare, and
+# /search answers JSON. A push to main then publishes multi-arch
+# (amd64 + arm64) as :latest and :sha-<commit>, with SLSA build provenance
+# attested to the registry.
+#
+# No GitHub release is created, deliberately: the repo has none, so
+# Scorecard's Signed-Releases check is unscored, and a release whose assets
+# carry no provenance file would score it 8 and pull the overall down.
+# Provenance lives on the image instead; verify it with
+#   gh attestation verify oci://ghcr.io/askalf/amnesia:latest --owner askalf
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'image/**'
+      - 'src/**'
+      - '.dockerignore'
+      - '.github/workflows/image.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'image/**'
+      - 'src/**'
+      - '.dockerignore'
+      - '.github/workflows/image.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-${{ github.ref }}
+  # A newer PR push supersedes a running check; publishes from main queue.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    # GitHub-hosted: this job runs on fork PRs too.
+    name: Build and smoke-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build + load
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: image/Dockerfile
+          push: false
+          load: true
+          tags: amnesia:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the running container
+        run: |
+          set -euo pipefail
+          docker run -d --name amnesia -p 127.0.0.1:18080:8080 amnesia:ci
+          python3 image/smoke.py http://127.0.0.1:18080 || { echo "--- container logs ---"; docker logs amnesia 2>&1 | tail -60; exit 1; }
+
+      - name: Smoke test the hardened run line from docs/self-host.md
+        run: |
+          set -euo pipefail
+          docker rm -f amnesia
+          docker run -d --name amnesia-hardened --read-only --tmpfs /tmp \
+            --cap-drop ALL --security-opt no-new-privileges \
+            -v amnesia-cache:/var/cache/searxng -p 127.0.0.1:18081:8080 amnesia:ci
+          python3 image/smoke.py http://127.0.0.1:18081 || { docker logs amnesia-hardened 2>&1 | tail -60; exit 1; }
+
+      - name: Teardown
+        if: always()
+        run: docker rm -f amnesia amnesia-hardened >/dev/null 2>&1 || true
+
+  publish:
+    name: Publish to GHCR
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    # Write scopes live on this job only; the workflow default stays read.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # keyless Sigstore signing (attest-build-provenance)
+      attestations: write # persist the attestation in GitHub's store
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Short commit id for the tag
+        id: sha
+        run: echo "short=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      # No QEMU: the Dockerfile has no RUN step, so the arm64 image is the
+      # arm64 base plus copied files and builds without emulation.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build + push (multi-arch)
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: image/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/amnesia:latest
+            ghcr.io/${{ github.repository_owner }}/amnesia:sha-${{ steps.sha.outputs.short }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      - name: Attest image provenance (keyless Sigstore)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/amnesia
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

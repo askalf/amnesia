@@ -944,12 +944,16 @@
     let currentPage = 1;
     let currentQuery = '';
 
-    // API origin: same-origin in local dev, the Turnstile-gated worker in prod.
+    // API origin: the Turnstile-gated worker on the hosted site (amnesia.tax),
+    // same-origin everywhere else — local dev and the self-host image
+    // (ghcr.io/askalf/amnesia), where SearXNG answers /search on this origin.
+    // An empty API_BASE also skips Turnstile entirely (see warmSession/apiGet).
+    // www.amnesia.tax 301s to the apex, so the apex is the only hosted name.
     // MUST stay above the page-load warmSession() call below — as a `const` it sits
     // in its temporal dead zone until this line runs, so a lower declaration throws
     // "Cannot access 'API_BASE' before initialization" the moment warmSession() reads
     // it, halting the whole script. Regression guard: keep this here.
-    const API_BASE = window.location.hostname === 'localhost' ? '' : 'https://api.amnesia.tax';
+    const API_BASE = window.location.hostname === 'amnesia.tax' ? 'https://api.amnesia.tax' : '';
 
     // Theme toggle
     const themeToggle = document.getElementById('themeToggle');
@@ -1270,7 +1274,7 @@
           if (!imgUrl || seen.has(imgUrl)) return;
           seen.add(imgUrl);
           html += '<div class="image-item"><a href="' + escapeAttr(linkUrl) + '" target="_blank" rel="noopener">';
-          html += '<img src="' + escapeAttr(imgUrl) + '" alt="' + escapeAttr(r.title || '') + '" loading="lazy" onerror="this.parentElement.parentElement.style.display=\'none\'">';
+          html += '<img src="' + escapeAttr(imgUrl) + '" alt="' + escapeAttr(r.title || '') + '" loading="lazy">';
           html += '<div class="image-label">' + escapeHtml(truncate(r.title || '', 60)) + '</div>';
           html += '</a></div>';
         });
@@ -1358,6 +1362,18 @@
         }
       }
     });
+
+    // A thumbnail that fails to load hides its whole tile. Same reason as
+    // above: an inline onerror attribute is refused by the hash CSP, so the
+    // image grid used to keep broken tiles. Load errors don't bubble, hence
+    // the capture phase.
+    document.addEventListener('error', (ev) => {
+      const img = ev.target;
+      if (img instanceof HTMLImageElement) {
+        const tile = img.closest('.image-item');
+        if (tile) tile.style.display = 'none';
+      }
+    }, true);
 
     function escapeHtml(s) {
       const d = document.createElement('div');

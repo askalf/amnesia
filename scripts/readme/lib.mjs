@@ -1,0 +1,84 @@
+// Shared pieces for the README asset generators.
+//
+// GitHub serves README images through its camo proxy inside an <img>, which
+// loads no external fonts, scripts or stylesheets. So every SVG here embeds
+// the brand face (Space Mono, SIL OFL, the same Latin-subset files the site
+// self-hosts from src/fonts/) as base64 and pins monospace runs with
+// textLength so alignment survives a fallback font.
+//
+// Zero dependencies, on purpose: a dependency added for a README picture is
+// a dependency the Scorecard Vulnerabilities check has to watch forever.
+
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(HERE, '..', '..');
+export const OUT_DIR = join(ROOT, '.github', 'readme');
+
+const b64 = (file) => readFileSync(join(ROOT, 'src', 'fonts', file)).toString('base64');
+
+/** @font-face rules for the embedded Space Mono subset. */
+export function fontFaces({ bold = true } = {}) {
+  const face = (weight, file) =>
+    `@font-face{font-family:'Space Mono';font-style:normal;font-weight:${weight};` +
+    `src:url(data:font/woff2;base64,${b64(file)}) format('woff2')}`;
+  return face(400, 'space-mono-400.woff2') + (bold ? face(700, 'space-mono-700.woff2') : '');
+}
+
+export const FONT = "'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+
+// Space Mono's advance width is 612/1000 em.
+export const CHAR_W = 0.612;
+
+/** Palette per theme. Dark tracks the site's dark theme and the askalf brand; light tracks GitHub's own surface. */
+export const THEMES = {
+  dark: {
+    name: 'dark',
+    bg: '#0a0a0f', text: '#e8e6f5', dim: '#8a85a8', muted: '#5a5670',
+    accent: '#8b5cf6', bright: '#c084fc', magenta: '#c026d3',
+    green: '#34d399', amber: '#fbbf24', red: '#f87171',
+    termBg: '#0d0c14', termChrome: '#1a1826',
+  },
+  light: {
+    name: 'light',
+    bg: '#ffffff', text: '#1f2328', dim: '#59636e', muted: '#8b949e',
+    accent: '#6d28d9', bright: '#7c3aed', magenta: '#a21caf',
+    green: '#1a7f37', amber: '#9a6700', red: '#cf222e',
+    termBg: '#0d0c14', termChrome: '#1a1826',
+  },
+};
+
+export const esc = (s) => String(s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** Wrap a document: viewBox, embedded font, a11y title/desc, reduced-motion opt-out for CSS animations. */
+export function svgDoc({ w, h, title, desc, body, style = '', bold = true }) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" role="img" aria-labelledby="t d">
+<title id="t">${esc(title)}</title>
+<desc id="d">${esc(desc)}</desc>
+<defs><style>${fontFaces({ bold })}
+text{font-family:${FONT};}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+${style}</style></defs>
+${body}
+</svg>
+`;
+}
+
+/** Window frame: an amnesia wordmark tag, the title, an optional right-hand
+ * label, an accent rule and a gradient hairline. No OS chrome. */
+export function windowChrome({ w, h, chromeH, title, right = '', theme: th }) {
+  const t = THEMES.dark;
+  const cy = chromeH / 2 + 4.5;
+  return `<linearGradient id="wc-accent" x1="0" x2="1"><stop offset="0" stop-color="${t.accent}"/><stop offset="1" stop-color="${t.magenta}"/></linearGradient>
+<rect width="${w}" height="${h}" rx="12" fill="${th.termBg}"/>
+<rect width="${w}" height="${chromeH}" rx="12" fill="${th.termChrome}"/><rect y="${chromeH - 12}" width="${w}" height="12" fill="${th.termChrome}"/>
+<rect y="${chromeH - 1}" width="${w}" height="1.5" fill="url(#wc-accent)" opacity="0.9"/>
+<rect x="0.75" y="0.75" width="${w - 1.5}" height="${h - 1.5}" rx="12" fill="none" stroke="url(#wc-accent)" stroke-width="1.5" opacity="0.55"/>
+<rect x="12" y="${chromeH / 2 - 10}" width="72" height="20" rx="6" fill="${t.accent}" opacity="0.2"/>
+<text x="48" y="${cy}" text-anchor="middle" font-size="12" fill="${t.bright}" letter-spacing="0.5">amnesia</text>
+<text x="${w / 2}" y="${cy}" text-anchor="middle" font-size="12" fill="${t.dim}">${esc(title)}</text>
+${right ? `<text x="${w - 16}" y="${cy}" text-anchor="end" font-size="11.5" fill="${t.muted}">${esc(right)}</text>` : ''}`;
+}

@@ -1,0 +1,7 @@
+# The image build (image/Dockerfile, context = repo root) needs only these.
+# Everything else stays out of the build context.
+*
+!image/
+!src/amnesia-search.html
+!src/og.png
+!src/fonts/

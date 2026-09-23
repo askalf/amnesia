@@ -18,6 +18,10 @@ cp src/amnesia-search.html deploy/index.html
 cp src/og.png deploy/og.png 2>/dev/null || true
 cp src/robots.txt deploy/robots.txt 2>/dev/null || true
 cp src/sitemap.xml deploy/sitemap.xml 2>/dev/null || true
+# Required, not best-effort: the page links /opensearch.xml, and without the
+# file Pages answers that URL with the HTML page (the SPA fallback), so
+# "add amnesia to your browser" fails with no visible error.
+cp src/opensearch.xml deploy/opensearch.xml
 cp src/_headers deploy/_headers 2>/dev/null || true
 cp -r src/fonts deploy/fonts
 echo "build-site: deploy/ holds $(find deploy -type f | wc -l) file(s):"

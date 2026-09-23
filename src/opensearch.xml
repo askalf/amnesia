@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Lets a browser add amnesia as a search engine (the page links it with
+     rel="search"). No suggestions URL on purpose: /autocompleter is behind the
+     API gate and a browser's suggestion fetch carries no session. -->
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/" xmlns:moz="http://www.mozilla.org/2006/browser/search/">
+  <ShortName>amnesia</ShortName>
+  <Description>Search the web. Remember nothing.</Description>
+  <InputEncoding>UTF-8</InputEncoding>
+  <Url type="text/html" method="get" template="https://amnesia.tax/?q={searchTerms}"/>
+  <moz:SearchForm>https://amnesia.tax/</moz:SearchForm>
+</OpenSearchDescription>
