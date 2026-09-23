@@ -89,6 +89,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ignores `HTTP_PROXY` from the environment), so `docker-compose.yml` mounts
   `infra/searxng-proxy/settings.yml`, generated from the live file by
   `scripts/searxng-proxy-settings.mjs`, and CI refuses a commit where they drift.
+- **Blocked providers' other verticals off.** `use_default_settings` keeps every
+  upstream engine that is on by default, so Google, Qwant, Startpage and Mojeek
+  image, news and video engines still ran although those providers' web
+  engines were disabled for refusing VPN IPs. They are disabled by name now.
 - **SearXNG metrics on.** `/stats` and `/stats/errors` show per-engine timing,
   timeouts and errors, reachable only on the host's loopback port: the Worker
   forwards nothing but `/search` and `/autocompleter`.
