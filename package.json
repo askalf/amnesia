@@ -6,7 +6,8 @@
   "license": "MIT",
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "fuzz": "node fuzz/run.mjs"
+    "fuzz": "node fuzz/run.mjs",
+    "check:links": "node scripts/check-readme-links.mjs"
   },
   "engines": {
     "node": ">=20.0.0"

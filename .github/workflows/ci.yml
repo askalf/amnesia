@@ -17,36 +17,23 @@ jobs:
     # Keep PR-triggered CI on ephemeral GH runners; only the deploy workflows
     # (push to main, no fork exposure) use the self-hosted runner.
     runs-on: ubuntu-latest
+    # The job name is the branch ruleset's required status check. Renaming it
+    # leaves every open PR waiting on a check that never reports.
     name: Validate HTML and Scripts
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Validate HTML exists
-        run: |
-          if [ ! -f "src/amnesia-search.html" ]; then
-            echo "Error: src/amnesia-search.html not found"
-            exit 1
-          fi
-          echo "✓ HTML file found"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
 
-      - name: Check HTML validity
-        run: |
-          # Basic HTML structure check
-          if ! grep -q "<!DOCTYPE html>" src/amnesia-search.html; then
-            echo "Error: Missing DOCTYPE declaration"
-            exit 1
-          fi
-          if ! grep -q "<html" src/amnesia-search.html; then
-            echo "Error: Missing html tag"
-            exit 1
-          fi
-          if ! grep -q "</html>" src/amnesia-search.html; then
-            echo "Error: Missing closing html tag"
-            exit 1
-          fi
-          echo "✓ HTML structure valid"
+      - name: Tests (API gate + SPA guards)
+        # Zero dependencies: node:test drives the Worker's real default export
+        # and runs the SPA's safeUrl/escapeAttr from the page's own bytes.
+        run: npm test
 
       - name: CSP hashes match the SPA
         # src/_headers allows the page's inline <script>/<style> by hash. A
@@ -54,41 +41,62 @@ jobs:
         # page whose script the browser refuses to run — "search does
         # nothing", no error a user would see. Fix: node scripts/csp-hashes.mjs --write
         run: node scripts/csp-hashes.mjs --check
-      - name: Check for scripts
-        run: |
-          # Verify scripts are present (should have search functionality)
-          if grep -q "<script" src/amnesia-search.html; then
-            echo "✓ Scripts found"
-          else
-            echo "Warning: No scripts found in HTML"
-          fi
 
-      - name: Validate static assets
-        run: |
-          # Check that required static files exist
-          if [ ! -f "src/robots.txt" ]; then
-            echo "Warning: robots.txt not found"
-          else
-            echo "✓ robots.txt found"
-          fi
+      - name: README and docs links resolve
+        run: node scripts/check-readme-links.mjs
 
-          if [ ! -f "src/sitemap.xml" ]; then
-            echo "Warning: sitemap.xml not found"
-          else
-            echo "✓ sitemap.xml found"
-          fi
-
-      - name: Validate XML files
+      - name: XML files are well-formed
         run: |
-          # Validate sitemap.xml if it exists
-          if [ -f "src/sitemap.xml" ]; then
-            python3 -c "
+          python3 - <<'EOF'
           import xml.etree.ElementTree as ET
-          try:
-            ET.parse('src/sitemap.xml')
-            print('✓ sitemap.xml is valid XML')
-          except ET.ParseError as e:
-            print(f'Error: Invalid XML in sitemap.xml: {e}')
-            exit(1)
-          "
+          for f in ('src/sitemap.xml', 'src/opensearch.xml'):
+              ET.parse(f)
+              print(f'ok  {f}')
+          EOF
+
+  scorecard-local:
+    # The repo is at OpenSSF Scorecard 9.5. Four of its checks are read
+    # straight from the files in this tree, so a PR can lower them before the
+    # nightly Scorecard run ever sees it: an unpinned action, a write token at
+    # the top of a workflow, a dangerous trigger, a committed binary. This job
+    # scores the PR's own tree and fails on anything below 10.
+    name: Scorecard (file-based checks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Scorecard (release binary, checksum-pinned)
+        # The gcr.io/openssf/scorecard image refuses pulls (its registry
+        # project has billing disabled), so the release tarball is used
+        # instead, verified against the SHA-256 published in the release's
+        # scorecard_checksums.txt.
+        env:
+          SCORECARD_VERSION: 5.5.0
+          SCORECARD_SHA256: 83b90a05c1540ef1390db1cd5711e5fd04be9c1d8537fb84d39d02092d6a8dff
+        run: |
+          set -euo pipefail
+          curl -sSfL --max-time 60 -o "$RUNNER_TEMP/scorecard.tgz" \
+            "https://github.com/ossf/scorecard/releases/download/v${SCORECARD_VERSION}/scorecard_${SCORECARD_VERSION}_linux_amd64.tar.gz"
+          echo "${SCORECARD_SHA256}  $RUNNER_TEMP/scorecard.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/scorecard.tgz" -C "$RUNNER_TEMP" scorecard
+
+      - name: Pinned-Dependencies, Token-Permissions, Dangerous-Workflow and Binary-Artifacts stay at 10
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/scorecard" --local=. \
+            --checks=Pinned-Dependencies,Token-Permissions,Dangerous-Workflow,Binary-Artifacts \
+            --format=json > "$RUNNER_TEMP/scorecard.json"
+          jq -r '.checks[] | "\(.score)\t\(.name)\t\(.reason)"' "$RUNNER_TEMP/scorecard.json"
+          # -1 counts as a failure too: it means the check found nothing to
+          # score, which on this tree means it did not see the workflows.
+          low=$(jq '[.checks[] | select(.score != 10)] | length' "$RUNNER_TEMP/scorecard.json")
+          if [ "$low" != "0" ]; then
+            echo "::error::$low Scorecard check(s) below 10 on this tree. Run '$RUNNER_TEMP/scorecard --local=. --show-details' (or read the table above) to see which line lowered it."
+            "$RUNNER_TEMP/scorecard" --local=. \
+              --checks=Pinned-Dependencies,Token-Permissions,Dangerous-Workflow,Binary-Artifacts \
+              --show-details | grep -E 'Warn:' || true
+            exit 1
           fi
