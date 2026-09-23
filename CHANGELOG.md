@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Self-host image `ghcr.io/askalf/amnesia`.** `docker run -d -p 8080:8080
+  ghcr.io/askalf/amnesia` runs the amnesia page and SearXNG in one container on
+  one origin: no API host, no CORS, no bot gate, and no request to Cloudflare
+  (the Turnstile loader is stripped and the CSP is `connect-src 'self'`).
+  Unprivileged, multi-arch, a per-container secret, and SLSA build provenance
+  attested to the registry. `image.yml` builds it and runs `image/smoke.py`
+  against the container, plain and with the hardened run line, before main
+  publishes it. The README's previous one-liner ran stock SearXNG, not amnesia.
+- **Tests.** `npm test` (node:test, zero dependencies): 46 tests driving the
+  Worker's real default export (fail-closed, cookie forgery/expiry/splice,
+  the Turnstile hostname check, CORS, the edge-cache key) and the SPA's URL
+  guards run from the page's own bytes.
+- **Score guards.** A PR job scores the PR's own tree with OpenSSF Scorecard
+  in `--local` mode and fails if Pinned-Dependencies, Token-Permissions,
+  Dangerous-Workflow or Binary-Artifacts drop below 10; the daily canary fails
+  if the published score falls under 9.5 or a 10 slips.
+- README rebuilt: art, a terminal generated from a live run of the checks
+  (`scripts/readme/verify.mjs` writes nothing if a claim fails), the query
+  path with what each party sees and keeps, and a README/docs link guard in CI.
+
+### Fixed
+- `/opensearch.xml` never existed, so "add amnesia to your browser" received
+  the HTML page. The file ships now, and `deploy.yml` builds the site with
+  `scripts/build-site.sh` instead of its own copy of the file list.
+- Image search kept broken thumbnail tiles: the hash CSP refuses the inline
+  `onerror` that hid them. A capture-phase listener does it now.
+- The canary checked site 200 and gate 401 but never the origin lock's 403
+  the README credited it with. It checks the 403 and the OpenSearch file now.
+- Docs said the session cookie lasts 30 minutes; the Worker issues 6 hours.
+
+### Security
+- The gate's Turnstile bypass for the operator's verification bridge listed a
+  dynamic residential IP from a relay retired on 2026-09-12. Only the box's
+  own IP remains, and the privacy model now discloses the bypass.
+- The privacy model states two things it used to leave out: image search
+  loads each thumbnail from its own host (which sees your IP, but no
+  referrer), and the zone's Cloudflare managed transform currently overrides
+  some of `src/_headers` at the edge.
+
 ### Security
 - VPN by topology, as an alternative stack shape: `infra/docker-compose.vpn.yml`
   runs its own gluetun and puts SearXNG inside its network namespace
