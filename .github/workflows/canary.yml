@@ -80,3 +80,77 @@ jobs:
           code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 'https://api.amnesia.tax/search?q=test&format=json')
           [ "$code" = "401" ] || { echo "::error::unauthenticated /search returned $code (expected 401) — the gate may be open or broken"; exit 1; }
           echo "unauthenticated /search 401"
+
+      - name: Origin refuses anything that skipped the gate
+        run: |
+          set -euo pipefail
+          # The README says "try it" about this URL; the canary tries it daily.
+          # 403 is the WAF origin-lock rule. A 200 means search-origin is
+          # reachable around the gate; anything else means the origin moved.
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 'https://search-origin.amnesia.tax/search?q=test')
+          [ "$code" = "403" ] || { echo "::error::search-origin /search returned $code (expected 403) — the origin lock may be off"; exit 1; }
+          echo "search-origin /search 403"
+
+      - name: OpenSearch description is served (not the SPA fallback)
+        run: |
+          set -euo pipefail
+          # Pages answers a missing file with index.html and a 200, so a
+          # status check cannot see this regression; the body can.
+          body=$(curl -sS --max-time 20 https://amnesia.tax/opensearch.xml)
+          echo "$body" | grep -q '<OpenSearchDescription' || { echo "::error::/opensearch.xml is not an OpenSearch description (Pages served the SPA?) — 'add to browser' is broken"; exit 1; }
+          echo "opensearch.xml ok"
+
+  scorecard-floor:
+    # The repo holds the fleet's highest OpenSSF Scorecard (9.5). The score is
+    # recomputed on every push to main and weekly, and most ways to lower it
+    # are merges nobody meant as score changes: a GitHub release without
+    # provenance (Signed-Releases goes from unscored to 8 and the overall to
+    # 9.4), an advisory landing on a dev dependency, a direct push. Fail loudly
+    # the day it happens instead of finding out from the badge.
+    name: Scorecard has not dropped
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Overall at least 9.5, and no 10 has slipped
+        env:
+          FLOOR: '9.5'
+          # Checks at 10 as of 2026-09-22. The four below 10 are ceilings a
+          # solo-maintained repo cannot lift honestly (Branch-Protection 8,
+          # Contributors 3, CII-Best-Practices 5); they are not listed.
+          AT_TEN: >-
+            Binary-Artifacts CI-Tests Code-Review Dangerous-Workflow
+            Dependency-Update-Tool Fuzzing License Maintained
+            Pinned-Dependencies SAST Security-Policy Token-Permissions
+            Vulnerabilities
+          # Unscored today (-1) and fine that way; only a 10 is acceptable
+          # once they do score. Packaging turns 10 when the image workflow
+          # publishes; Signed-Releases must never be scored by a release
+          # that lacks provenance.
+          UNSCORED_OR_TEN: Packaging Signed-Releases
+        run: |
+          set -euo pipefail
+          curl -sSf --max-time 20 -o sc.json \
+            https://api.securityscorecards.dev/projects/github.com/askalf/amnesia
+          score=$(jq -r '.score' sc.json)
+          echo "Scorecard $score (commit $(jq -r '.repo.commit[0:8]' sc.json), $(jq -r '.date' sc.json))"
+          jq -r '.checks[] | "  \(.score)\t\(.name)"' sc.json
+          fail=0
+          if ! awk -v s="$score" -v f="$FLOOR" 'BEGIN { exit !(s >= f) }'; then
+            echo "::error::Scorecard overall is $score, below the $FLOOR floor."
+            fail=1
+          fi
+          for c in $AT_TEN; do
+            s=$(jq -r --arg c "$c" '.checks[] | select(.name == $c) | .score' sc.json)
+            if [ "$s" != "10" ]; then
+              echo "::error::Scorecard $c is ${s:-missing} (was 10): $(jq -r --arg c "$c" '.checks[] | select(.name == $c) | .reason' sc.json)"
+              fail=1
+            fi
+          done
+          for c in $UNSCORED_OR_TEN; do
+            s=$(jq -r --arg c "$c" '.checks[] | select(.name == $c) | .score' sc.json)
+            case "$s" in
+              -1|10) ;;
+              *) echo "::error::Scorecard $c scored $s: $(jq -r --arg c "$c" '.checks[] | select(.name == $c) | .reason' sc.json)"; fail=1 ;;
+            esac
+          done
+          exit "$fail"
