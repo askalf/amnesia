@@ -31,6 +31,7 @@ jobs:
     # code-exec path. Keep PR-triggered analysis on ephemeral GH runners; only
     # the deploy workflows (push to main, no fork exposure) use self-hosted.
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       security-events: write # upload the SARIF results to code scanning
       contents: read # checkout the source

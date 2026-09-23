@@ -16,6 +16,7 @@ permissions: read-all
 jobs:
   Fuzzing:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
