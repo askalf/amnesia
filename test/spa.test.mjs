@@ -196,11 +196,6 @@ describe('page contract', () => {
   });
 });
 
-/**
- * The page-load session warm-up, run from the page's own bytes against a fake
- * fetch and a fake Turnstile. `sessionStatus` is what /session answers without
- * a token (200 = valid cookie, 401 = none); with a token it answers 200.
- */
 function warmHarness({ sessionStatus, turnstileLoaded = true }) {
   const fetches = [];
   let solves = 0;
@@ -253,7 +248,7 @@ describe('warmSession', () => {
     assert.equal(h.solves(), 1);
   });
 
-  test('a 401 before the deferred Turnstile script has loaded waits for it instead of giving up', async () => {
+  test('waits for the deferred Turnstile loader after a 401', async () => {
     const h = warmHarness({ sessionStatus: 401, turnstileLoaded: false });
     const warmed = h.warm();
     await new Promise((r) => setImmediate(r));
