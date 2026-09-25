@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  normalizeSponsors, renderReadmeBlock, replaceReadmeBlock, README_START, README_END,
+  normalizeSponsors, renderReadmeBlock, replaceReadmeBlock, fetchSponsors, README_START, README_END,
 } from '../scripts/sponsors.mjs';
 
 const node = (login, monthly, extra = {}) => ({
@@ -46,4 +46,26 @@ test('the README carries one marked block that replaceReadmeBlock can find', () 
   assert.equal(replaceReadmeBlock(readme, current), readme);
   assert.match(replaceReadmeBlock(readme, renderReadmeBlock([])), /github\.com\/sponsors\/askalf/);
   assert.throws(() => replaceReadmeBlock('no markers', renderReadmeBlock([])), /missing/);
+});
+
+const page = (nodes, hasNextPage, endCursor) => ({
+  ok: true,
+  json: async () => ({ data: { user: { sponsorshipsAsMaintainer: { nodes, pageInfo: { hasNextPage, endCursor } } } } }),
+});
+
+test('fetchSponsors follows every page before normalizing', async () => {
+  process.env.GH_TOKEN = 'test-token';
+  const cursors = [];
+  const pages = [page([node('first', 25)], true, 'c1'), page([node('second', 100)], false, null)];
+  const out = await fetchSponsors('askalf', async (_url, init) => {
+    cursors.push(JSON.parse(init.body).variables.cursor);
+    return pages.shift();
+  });
+  assert.deepEqual(cursors, [null, 'c1']);
+  assert.deepEqual(out.map((s) => s.login), ['second', 'first']);
+});
+
+test('fetchSponsors fails rather than loop on a cursor that does not advance', async () => {
+  process.env.GH_TOKEN = 'test-token';
+  await assert.rejects(fetchSponsors('askalf', async () => page([], true, null)), /did not advance/);
 });

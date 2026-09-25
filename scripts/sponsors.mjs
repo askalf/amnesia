@@ -28,9 +28,10 @@ export const README_TIER_MIN_USD = 25;
 
 const SPONSOR_URL = `https://github.com/sponsors/${MAINTAINER}`;
 
-const QUERY = `query($login: String!) {
+const QUERY = `query($login: String!, $cursor: String) {
   user(login: $login) {
-    sponsorshipsAsMaintainer(first: 100, activeOnly: true, includePrivate: false) {
+    sponsorshipsAsMaintainer(first: 100, after: $cursor, activeOnly: true, includePrivate: false) {
+      pageInfo { hasNextPage endCursor }
       nodes {
         isOneTimePayment
         tier { monthlyPriceInDollars isOneTime }
@@ -91,16 +92,25 @@ function token() {
 export async function fetchSponsors(login = MAINTAINER, fetchImpl = fetch) {
   const t = token();
   if (!t) throw new Error('no GitHub token (GH_TOKEN / GITHUB_TOKEN / gh auth)');
-  const res = await fetchImpl('https://api.github.com/graphql', {
-    method: 'POST',
-    headers: { authorization: `bearer ${t}`, 'content-type': 'application/json', 'user-agent': 'amnesia-sponsors' },
-    body: JSON.stringify({ query: QUERY, variables: { login } }),
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!res.ok) throw new Error(`GraphQL HTTP ${res.status}`);
-  const json = await res.json();
-  const nodes = json && json.data && json.data.user && json.data.user.sponsorshipsAsMaintainer && json.data.user.sponsorshipsAsMaintainer.nodes;
-  if (!Array.isArray(nodes)) throw new Error(`unexpected GraphQL shape: ${JSON.stringify(json).slice(0, 200)}`);
+  const nodes = [];
+  let cursor = null;
+  for (;;) {
+    const res = await fetchImpl('https://api.github.com/graphql', {
+      method: 'POST',
+      headers: { authorization: `bearer ${t}`, 'content-type': 'application/json', 'user-agent': 'amnesia-sponsors' },
+      body: JSON.stringify({ query: QUERY, variables: { login, cursor } }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) throw new Error(`GraphQL HTTP ${res.status}`);
+    const json = await res.json();
+    const conn = json && json.data && json.data.user && json.data.user.sponsorshipsAsMaintainer;
+    if (!conn || !Array.isArray(conn.nodes)) throw new Error(`unexpected GraphQL shape: ${JSON.stringify(json).slice(0, 200)}`);
+    nodes.push(...conn.nodes);
+    const page = conn.pageInfo || {};
+    if (!page.hasNextPage) break;
+    if (!page.endCursor || page.endCursor === cursor) throw new Error('GraphQL pagination did not advance');
+    cursor = page.endCursor;
+  }
   return normalizeSponsors(nodes);
 }
 
