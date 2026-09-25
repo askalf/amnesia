@@ -13,6 +13,7 @@ import {
   REDLINE_LOGIN,
   SECOND_READ_LOGIN,
   VERIFIER_LOGIN,
+  collectPages,
 } from './fleet-status.mjs';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -380,6 +381,16 @@ console.log('\n  required CI is the verification where the base branch requires 
   const limit = Number(/gh pr list --repo "\$REPO" --state open --limit (\d+)/.exec(wf)?.[1] ?? 0);
   check('backfill reads more than one page of open PRs', limit > 100);
   check('backfill fails at its cap instead of skipping PRs', new RegExp(`-ge ${limit}\\b`).test(wf) && /::error::/.test(wf));
+}
+
+{
+  // Paging reads to the first short page, so a required check on page 2 still counts.
+  const pager = (sizes) => async (n) => Array.from({ length: sizes[n - 1] ?? 0 }, (_, i) => ({ name: `check-${n}-${i}`, state: 'SUCCESS' }));
+  const two = await collectPages(pager([100, 1]));
+  check('101 rows over two pages are all read', two.length === 101);
+  check('a full last page reads one more, empty, page', (await collectPages(pager([100, 100]))).length === 200);
+  check('a short first page is the only page', (await collectPages(pager([5]))).length === 5);
+  check('a required check on page 2 counts', requiredCiState(['check-2-0'], two) === 'passed');
 }
 
 console.log(`\n  ${pass} pass, ${fail} fail`);
