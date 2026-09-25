@@ -4,6 +4,10 @@ name: Sponsors README sync
 # rebuild the marked block from the public sponsor list (scripts/sponsors.mjs)
 # and open a PR when it changed. A PR, not a push: README changes go through
 # review like everything else. Private sponsors are never named.
+#
+# GitHub does not run workflows for pushes or PRs made with GITHUB_TOKEN, so
+# the PR only gets its required checks when an AMNESIA_BOT_PAT secret is set.
+# Without one, close and reopen the bot PR to start them.
 
 on:
   schedule:
@@ -29,6 +33,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The push below runs as this token; see the header for why a PAT.
+          token: ${{ secrets.AMNESIA_BOT_PAT || secrets.GITHUB_TOKEN }}
           persist-credentials: true
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -54,7 +60,7 @@ jobs:
       - name: Open or refresh the PR
         if: steps.sync.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.AMNESIA_BOT_PAT || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           branch="bot/sponsors-readme"

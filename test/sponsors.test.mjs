@@ -25,11 +25,14 @@ test('normalizeSponsors drops nodes without a login and sorts by tier, then logi
 test('only recurring sponsors at $25/month and up are named', () => {
   const block = renderReadmeBlock(normalizeSponsors([
     node('big', 100, { sponsorEntity: { login: 'big', name: ' Big Co ' } }),
+    node('edge', 25),
+    node('under', 24),
     node('small', 5),
     node('once', 500, { isOneTimePayment: true }),
   ]));
   assert.match(block, /- \[@big\]\(https:\/\/github\.com\/big\) \(Big Co\)/);
-  assert.doesNotMatch(block, /small|once/);
+  assert.match(block, /\[@edge\]/);
+  assert.doesNotMatch(block, /under|small|once/);
 });
 
 test('with nobody to name, the block is one sentence pointing at Sponsors', () => {

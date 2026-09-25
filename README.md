@@ -107,7 +107,7 @@ Amnesia doesn't protect against a global adversary watching both ends, a comprom
 amnesia has no ads and no tracking, so it is funded by its users through [GitHub Sponsors](https://github.com/sponsors/askalf): the VPN exit and the server behind the hosted instance are the running costs. Sponsors at $25/month and up are listed here.
 <!-- sponsors:end -->
 
-<sub>This block comes from <a href="scripts/sponsors.mjs"><code>scripts/sponsors.mjs</code></a>, which reads the public sponsor list; <code>sponsors-readme.yml</code> opens a PR when it changes. Private sponsors are never named.</sub>
+<sub>This block comes from <a href="scripts/sponsors.mjs"><code>scripts/sponsors.mjs</code></a>, which reads the public sponsor list; <code>sponsors-readme.yml</code> opens a PR when it changes (its checks run only with an <code>AMNESIA_BOT_PAT</code> secret; without one, close and reopen that PR). Private sponsors are never named.</sub>
 
 ## Project
 
