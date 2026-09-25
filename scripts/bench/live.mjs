@@ -41,8 +41,9 @@ const { values: opt } = parseArgs({
 const SITE = opt.site.replace(/\/$/, '');
 const RUNS = Number(opt.runs);
 const TIMEOUT = Number(opt.timeout);
-// Distinct everyday queries so each run's first search is an edge-cache miss
-// (the Worker keys on the query text for 3 minutes).
+// Distinct everyday queries. The Worker caches on the query text for 3 minutes, so a run's
+// first search is only a miss if no run in that window used the query: each invocation starts
+// at a random point and steps through the list, and the search median counts only misses.
 const QUERIES = ['tide tables explained', 'cast iron seasoning', 'how do vaccines work', 'aurora forecast tonight',
   'tcp slow start', 'best hiking boots', 'sourdough hydration', 'roman aqueducts', 'solar panel efficiency', 'jazz chord voicings'];
 
@@ -121,6 +122,7 @@ async function main() {
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch({ headless: !opt.headed });
   const runs = [];
+  const start = Math.floor(Math.random() * QUERIES.length);
   try {
     for (let i = 0; i < RUNS; i++) {
       const ctx = await browser.newContext();
@@ -130,7 +132,7 @@ async function main() {
         await ctx.addCookies([{ name, value: v.join('='), domain: api, path: '/', secure: true, sameSite: 'None' }]);
       }
       const page = await ctx.newPage();
-      const query = QUERIES[(Date.now() / 1000 + i) % QUERIES.length | 0];
+      const query = QUERIES[(start + i) % QUERIES.length];
       const run = { query };
       try {
         run.cold = await pageLoad(page, 'cold');
@@ -152,6 +154,9 @@ async function main() {
   }
 
   const col = (get) => median(runs.map(get));
+  // An edge-cache hit on a first search (a query repeated inside the 3-minute window) is not an
+  // uncached search; leave it out of that median rather than blend it in.
+  const miss = (get) => median(runs.filter((r) => r.search?.cache !== 'hit').map(get));
   const rows = [
     ['cold load', 'TTFB', col((r) => r.cold?.ttfb)],
     ['', 'DNS + connect', col((r) => r.cold && r.cold.dns + r.cold.connect)],
@@ -160,8 +165,8 @@ async function main() {
     ['', 'session warm-up (Turnstile + /session)', col((r) => r.cold?.session)],
     ['warm load', 'TTFB', col((r) => r.warm?.ttfb)],
     ['', 'load event', col((r) => r.warm?.load)],
-    ['search', '/search response', col((r) => r.search?.response)],
-    ['', 'results rendered', col((r) => r.search?.render)],
+    ['search', '/search response', miss((r) => r.search?.response)],
+    ['', 'results rendered', miss((r) => r.search?.render)],
     ['repeat search', '/search response', col((r) => r.repeat?.response)],
     ['', 'results rendered', col((r) => r.repeat?.render)],
   ].filter(([, , v]) => v != null);

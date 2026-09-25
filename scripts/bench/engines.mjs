@@ -6,8 +6,8 @@
 //                                  [--ca FILE] [--json out.json] [--keep]
 //
 // Starts the digest-pinned SearXNG image from infra/docker-compose.yml with
-// the production settings, runs a fixed set of searches across the
-// categories the SPA offers, and reads each response's Server-Timing header,
+// the production settings, runs a fixed set of searches across eight
+// SearXNG categories (the SPA's four tabs and four reachable by ?cat=), and reads each response's Server-Timing header,
 // where SearXNG reports every engine that answered and how long it took
 // (`total_N_<engine>`: request + parse; `load_N_<engine>`: the HTTP fetch
 // alone). Engines that failed come from the JSON body's unresponsive_engines.
