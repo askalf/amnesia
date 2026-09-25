@@ -15,7 +15,7 @@ flowchart LR
 ```
 
 - **Front end** — [`src/amnesia-search.html`](../src/amnesia-search.html), 44 KB, self-contained. Pre-warms the session cookie on page load so the first search never waits on Turnstile; on a 401 it solves once and retries. Autocomplete is best-effort and never triggers a challenge.
-- **API gate** — [`worker/src/index.js`](../worker/src/index.js). Authorizes (cookie, else token, else 401), proxies `/search` and `/autocompleter` to the origin with the secret header, and stores successful answers at the edge under a key built from the normalized query and sorted params. Clients always receive `no-store`; the edge copy's own `cache-control` governs its lifetime.
+- **API gate** — [`worker/src/index.js`](../worker/src/index.js). Authorizes (cookie, else token, else 401), renews a cookie past half its life up to `SESSION_MAX_AGE` from its solve, proxies `/search` and `/autocompleter` to the origin with the secret header, and stores successful answers at the edge under a key built from the normalized query and sorted params. Clients always receive `no-store`; the edge copy's own `cache-control` governs its lifetime.
 - **Origin lock** — the backend hostname answers only to the Worker. WAF returns 403 without the secret header; zone rate limits cover `/search` on both hosts.
 - **Backend** — one SearXNG container, no result cache, no Redis or Valkey, no nginx. Fewer components holding a query is the design goal, not a shortcut. Every enabled engine has a 3 s timeout and no retries, and a client's `timeout_limit` is capped at 5 s: healthy engines answer well under 1.5 s, and a flaky one is bounded rather than waited on. Per-engine timing is on the host at `127.0.0.1:8081/stats`.
 
