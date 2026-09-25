@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Sponsors.** The page footers link to GitHub Sponsors ("no ads, funded by
+  sponsors"): a plain link, no script or request, and `Referrer-Policy:
+  same-origin` means GitHub is not told the visitor came from amnesia. The
+  README gains a Sponsor section whose block `scripts/sponsors.mjs` rebuilds
+  from the public sponsor list; `sponsors-readme.yml` runs it daily and opens a
+  PR when it changes. Private sponsors are never named.
 - **Latency benchmarks, `scripts/bench/`.** `live.mjs` times a cold page load,
   a warm reload, a search and a repeat search (edge-cache hit) in a real
   browser against amnesia.tax or a self-host. `engines.mjs` runs the pinned
