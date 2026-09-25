@@ -60,6 +60,11 @@ export function normalizeSponsors(nodes) {
 
 const mention = (s) => `[@${s.login}](https://github.com/${s.login})`;
 
+/** A sponsor's display name is theirs to set: render it as text, never as Markdown or HTML. */
+export function escapeMarkdownText(value) {
+  return value.replace(/\s+/g, ' ').replace(/[\\`*_{}[\]<>()#+\-.!|~&]/g, '\\$&');
+}
+
 /** The block, markers included: the $25+ monthly sponsors, or one sentence when there are none yet. */
 export function renderReadmeBlock(sponsors) {
   const named = sponsors.filter((s) => !s.oneTime && s.monthly >= README_TIER_MIN_USD);
@@ -69,7 +74,7 @@ export function renderReadmeBlock(sponsors) {
   } else {
     lines.push(`amnesia has no ads and no tracking, so it is funded by its users through [GitHub Sponsors](${SPONSOR_URL}). Thank you:`);
     lines.push('');
-    for (const s of named) lines.push(`- ${mention(s)}${s.name ? ` (${s.name})` : ''}`);
+    for (const s of named) lines.push(`- ${mention(s)}${s.name ? ` (${escapeMarkdownText(s.name)})` : ''}`);
   }
   lines.push(README_END);
   return lines.join('\n');

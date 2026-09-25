@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  normalizeSponsors, renderReadmeBlock, replaceReadmeBlock, fetchSponsors, README_START, README_END,
+  normalizeSponsors, renderReadmeBlock, replaceReadmeBlock, fetchSponsors, escapeMarkdownText, README_START, README_END,
 } from '../scripts/sponsors.mjs';
 
 const node = (login, monthly, extra = {}) => ({
@@ -71,4 +71,17 @@ test('fetchSponsors follows every page before normalizing', async () => {
 test('fetchSponsors fails rather than loop on a cursor that does not advance', async () => {
   process.env.GH_TOKEN = 'test-token';
   await assert.rejects(fetchSponsors('askalf', async () => page([], true, null)), /did not advance/);
+});
+
+test('a sponsor display name renders as text, never as Markdown or HTML', () => {
+  const hostile = '![beacon](https://attacker.example/pixel) <img src=x> [link](https://x.example)\n# heading';
+  const block = renderReadmeBlock(normalizeSponsors([
+    node('evil', 25, { sponsorEntity: { login: 'evil', name: hostile } }),
+  ]));
+  const line = block.split('\n').find((l) => l.startsWith('- [@evil]'));
+  assert.ok(line, 'the sponsor is still listed');
+  const name = line.slice('- [@evil](https://github.com/evil) '.length);
+  assert.doesNotMatch(name, /(^|[^\\])(!\[|<img|\]\()/, 'no live image, tag or link survives');
+  assert.equal(block.split('\n').length, 5, 'a newline in the name cannot start a new README line');
+  assert.equal(escapeMarkdownText('Big Co'), 'Big Co');
 });
