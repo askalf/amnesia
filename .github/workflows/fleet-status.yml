@@ -15,7 +15,7 @@ on:
   issue_comment:
     types: [created, edited, deleted]
   workflow_run:
-    workflows: [CI, CodeQL, Image, labels, 'PR triage']
+    workflows: [CI, CodeQL, Image, labels, 'PR triage', Redline]
     types: [completed]
 
 permissions: {}
