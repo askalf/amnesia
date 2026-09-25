@@ -8,7 +8,7 @@
 
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import worker, { buildCookie, hmac, verifySession, COOKIE_NAME } from '../worker/src/index.js';
+import worker, { buildCookie, hmac, verifySession, sessionTimes, COOKIE_NAME } from '../worker/src/index.js';
 
 const SITE = 'https://amnesia.tax';
 const API = 'https://api.amnesia.tax';
@@ -140,7 +140,7 @@ describe('session cookie', () => {
   });
 
   test('a valid cookie is proxied to ORIGIN_HOST with the gate header', async () => {
-    const r = await call('/search?q=hello&format=json', { headers: { cookie: await validCookie() } });
+    const r = await call('/search?q=hello&format=json', { headers: { cookie: await validCookie(1800) } });
     assert.equal(r.status, 200);
     const [c] = originCalls();
     assert.ok(c, 'origin was called');
@@ -151,7 +151,74 @@ describe('session cookie', () => {
     assert.equal(c.init.headers.get('cookie'), null, 'the client cookie is not forwarded');
     assert.equal(verifyCalls().length, 0, 'a cookie skips Turnstile');
     assert.equal(r.header('cache-control'), 'no-store');
-    assert.equal(r.header('set-cookie'), null, 'a cookie-authorized request is not re-issued one');
+    assert.equal(r.header('set-cookie'), null, 'a cookie with more than half its lifetime left is not re-issued');
+  });
+
+  test('a cookie with less than half its lifetime left is renewed for a full SESSION_TTL', async () => {
+    for (const path of ['/search?q=x', '/autocompleter?q=x', '/session']) {
+      const r = await call(path, { headers: { cookie: await validCookie(899) } });
+      assert.equal(r.status, 200, path);
+      const sc = r.header('set-cookie');
+      assert.ok(sc, `${path} renews the cookie`);
+      assert.match(sc, /Max-Age=1800;/);
+      const { exp } = sessionTimes(cookieValue(sc));
+      assert.ok(Math.abs(exp - (nowS() + 1800)) <= 2, 'the new expiry is a full SESSION_TTL out');
+      assert.equal(await verifySession(cookieValue(sc), ENV.SESSION_SECRET), true);
+    }
+    assert.equal(verifyCalls().length, 0, 'renewal needs no Turnstile solve');
+  });
+
+  test('an edge-cache hit also renews an ageing cookie', async () => {
+    await call('/search?q=cached', { headers: { cookie: await validCookie(1800) } });
+    const r = await call('/search?q=cached', { headers: { cookie: await validCookie(60) } });
+    assert.equal(r.header('x-amnesia-cache'), 'hit');
+    assert.ok(r.header('set-cookie'));
+    assert.equal(originCalls().length, 1);
+  });
+
+  const agedCookie = async (age, left) => {
+    const start = String(nowS() - age);
+    const exp = String(nowS() + left);
+    return `${COOKIE_NAME}=${start}.${exp}.${await hmac(ENV.SESSION_SECRET, `${start}.${exp}`)}`;
+  };
+
+  test('renewal keeps the solve time, so a session never outlives SESSION_MAX_AGE', async () => {
+    const env = { ...ENV, SESSION_MAX_AGE: '86400' };
+    // 23.9 h in: renewed, but only up to the 24 h mark.
+    const r = await call('/search?q=x', { env, headers: { cookie: await agedCookie(86040, 60) } });
+    const sc = r.header('set-cookie');
+    assert.ok(sc);
+    const { start, exp } = sessionTimes(cookieValue(sc));
+    assert.ok(Math.abs(start - (nowS() - 86040)) <= 2, 'the solve time carries over');
+    assert.ok(Math.abs(exp - (start + 86400)) <= 2, 'capped at start + SESSION_MAX_AGE');
+    assert.match(sc, /Max-Age=3[0-9]{2};/);
+    // At the cap: still valid, not renewed again.
+    const capped = await call('/search?q=y', { env, headers: { cookie: `${COOKIE_NAME}=${cookieValue(sc)}` } });
+    assert.equal(capped.status, 200);
+    assert.equal(capped.header('set-cookie'), null);
+  });
+
+  test('a cookie from before renewal (exp.sig) still verifies but is not renewed', async () => {
+    const exp = String(nowS() + 60);
+    const legacy = `${COOKIE_NAME}=${exp}.${await hmac(ENV.SESSION_SECRET, exp)}`;
+    const r = await call('/search?q=x', { headers: { cookie: legacy } });
+    assert.equal(r.status, 200);
+    assert.equal(r.header('set-cookie'), null);
+  });
+
+  test('a legacy signature spliced onto a start time → 401', async () => {
+    const exp = String(nowS() + 60);
+    const sig = await hmac(ENV.SESSION_SECRET, exp);
+    const r = await call('/search?q=x', { headers: { cookie: `${COOKIE_NAME}=${nowS()}.${exp}.${sig}` } });
+    assert.equal(r.status, 401);
+  });
+
+  test('renewal follows SESSION_TTL, not a fixed half hour', async () => {
+    const env = { ...ENV, SESSION_TTL: '21600' };
+    const fresh = await call('/search?q=x', { env, headers: { cookie: await validCookie(10801) } });
+    assert.equal(fresh.header('set-cookie'), null);
+    const ageing = await call('/search?q=y', { env, headers: { cookie: await validCookie(10799) } });
+    assert.match(ageing.header('set-cookie'), /Max-Age=21600;/);
   });
 
   test('the cookie is found among other cookies', async () => {

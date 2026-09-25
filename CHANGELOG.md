@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Sponsors.** The page footers link to GitHub Sponsors ("no ads, funded by
+  sponsors"): a plain link, no script or request, and `Referrer-Policy:
+  same-origin` means GitHub is not told the visitor came from amnesia. The
+  README gains a Sponsor section whose block `scripts/sponsors.mjs` rebuilds
+  from the public sponsor list; `sponsors-readme.yml` runs it daily and opens a
+  PR when it changes. Private sponsors are never named.
 - **Latency benchmarks, `scripts/bench/`.** `live.mjs` times a cold page load,
   a warm reload, a search and a repeat search (edge-cache hit) in a real
   browser against amnesia.tax or a self-host. `engines.mjs` runs the pinned
@@ -52,6 +58,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with "Verification failed". A `<link rel=preconnect>` opens the connection to
   `api.amnesia.tax` during parse; the self-host image strips it.
 - Docs said the session cookie lasts 30 minutes; the Worker issues 6 hours.
+
+### Changed
+- **The session cookie renews while in use.** A valid cookie with less than
+  half of `SESSION_TTL` left is re-issued on the same response, so someone
+  searching across the 6-hour mark no longer hits a Turnstile solve there.
+  The cookie now signs the solve's time with its expiry (`start.exp.sig`), and
+  renewal never passes `SESSION_MAX_AGE` (24 h) from that solve, so one solve
+  still buys a bounded session. Cookies issued before this (`exp.sig`) keep
+  working until they expire and are not renewed.
 
 ### Security
 - The gate's Turnstile bypass for the operator's verification bridge listed a
