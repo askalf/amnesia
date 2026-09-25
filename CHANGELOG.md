@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Releases from tags.** Pushing a `v*` tag runs `release.yml`, which
   publishes a GitHub release whose notes are that version's CHANGELOG section
   (`scripts/release-notes.mjs`). A tag without a section fails instead of
-  publishing empty notes.
+  publishing empty notes. The same workflow can be run by hand from the
+  Actions tab with a version, and then creates the tag as well.
 - **Sponsors.** The page footers link to GitHub Sponsors ("no ads, funded by
   sponsors"): a plain link, no script or request, and `Referrer-Policy:
   same-origin` means GitHub is not told the visitor came from amnesia. The

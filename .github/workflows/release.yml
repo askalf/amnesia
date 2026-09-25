@@ -3,16 +3,24 @@ name: Release
 # Pushing a v* tag publishes a GitHub release whose notes are that version's
 # CHANGELOG.md section (scripts/release-notes.mjs). A tag with no section fails
 # here rather than publishing empty notes. Nothing is published anywhere else.
+#
+# It can also be run by hand from the Actions tab with a version such as
+# v1.2.0: the release and its tag are then created on the commit it runs from.
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version to release, e.g. v1.2.0 (must have a CHANGELOG.md section)'
+        required: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -33,13 +41,23 @@ jobs:
       - name: Publish the release from CHANGELOG.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::$TAG is not a vX.Y.Z version"
+            exit 1
+          fi
           node scripts/release-notes.mjs "$TAG" > "$RUNNER_TEMP/notes.md"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "release $TAG already exists; leaving it as it is"
             exit 0
           fi
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            # No tag yet: gh creates it on the commit this run checked out.
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
