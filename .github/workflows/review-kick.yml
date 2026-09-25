@@ -1,0 +1,59 @@
+name: Review kick
+
+# Wakes the fleet's review dispatcher as soon as a PR head changes, instead of
+# leaving the PR to wait for the dispatcher's timer. The dispatcher is
+# idempotent, so a kick never files a second review; it only moves the next
+# run to now.
+#
+# pull_request_target, so the job always runs this file as it is on main: a
+# PR cannot edit what runs on the self-hosted runner. It never checks out or
+# runs PR code. Fork PRs are not reviewed by the fleet and are skipped, as are
+# drafts and Dependabot.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: review-kick
+  cancel-in-progress: false
+
+jobs:
+  kick:
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: [self-hosted, amnesia]
+    timeout-minutes: 2
+    steps:
+      - name: Queue review-dispatch for this head
+        run: |
+          if ! systemctl cat review-dispatch.service >/dev/null 2>&1; then
+            echo "::error::review-dispatch.service is not installed on this runner's host. Move this job to a runner on the dispatcher's host."
+            exit 1
+          fi
+          # The dispatcher is a oneshot that lists the open PRs when it starts, so
+          # a run already in flight may not have seen this head. A transient unit
+          # waits for that run to end, then starts another; kicks that arrive while
+          # it waits share it. After 15 minutes the unit gives up and the
+          # dispatcher's own timer covers the head.
+          if systemctl is-active --quiet review-dispatch-requeue.service; then
+            echo "a requeue is already waiting on the active dispatcher run; this head rides it"
+            exit 0
+          fi
+          if ! systemctl is-active --quiet review-dispatch.service; then
+            systemctl start --no-block review-dispatch.service
+            echo "review-dispatch started"
+            exit 0
+          fi
+          # The inner script is single-quoted on purpose: it runs in the unit, not here.
+          # shellcheck disable=SC2016
+          if systemd-run --unit=review-dispatch-requeue --quiet --collect /bin/bash -c \
+              'd=$((SECONDS + 900)); while systemctl is-active --quiet review-dispatch.service; do [ "$SECONDS" -ge "$d" ] && exit 0; sleep 5; done; systemctl start --no-block review-dispatch.service'; then
+            echo "dispatcher active; the requeue unit starts it when the current run ends"
+          else
+            echo "requeue unit could not be created (one is probably still being collected); this head rides the next run"
+          fi
