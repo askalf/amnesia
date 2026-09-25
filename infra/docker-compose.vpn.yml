@@ -9,9 +9,10 @@
 #   - gluetun's firewall drops everything that is not the tunnel (its default),
 #     and blocks ALL egress while the tunnel is down — so a VPN outage is a
 #     search outage, never a leak by the host IP.
-#   - `hostname: gluetun` makes `gluetun:8888` resolve inside the shared
-#     namespace, so searxng/settings.yml's proxy line keeps working unchanged;
-#     it now points at the co-located proxy, and the tunnel is under it either way.
+#   - searxng/settings.yml sets no proxy: inside this namespace the tunnel is
+#     already the only route, so engine connections go straight out through it
+#     instead of through a co-located HTTP proxy first. gluetun's HTTP proxy is
+#     off accordingly (one less listener, one less relay per connection).
 #   - The published port sits on gluetun (a namespace-sharing container cannot
 #     publish its own); FIREWALL_INPUT_PORTS lets 8080 in from the host side.
 #
@@ -50,10 +51,9 @@ services:
       # reuse the platform's key, the two sessions would fight.
       WIREGUARD_PRIVATE_KEY: ${AMNESIA_WIREGUARD_PRIVATE_KEY}
       SERVER_COUNTRIES: ${AMNESIA_VPN_COUNTRIES:-United States}
-      # The co-located proxy searxng/settings.yml already points at.
-      HTTPPROXY: "on"
-      HTTPPROXY_LISTENING_ADDRESS: ":8888"
-      HTTPPROXY_STEALTH: "on"
+      # No HTTP proxy: searxng shares this namespace and egresses through the
+      # tunnel directly (see header). The rollback shape uses the platform's.
+      HTTPPROXY: "off"
       # Let the published searxng port in through gluetun's firewall.
       FIREWALL_INPUT_PORTS: "8080"
       # DNS over TLS inside the tunnel; never the host's resolver.

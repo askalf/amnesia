@@ -9,10 +9,8 @@ on:
 permissions:
   contents: read
 
-# Cancel a superseded PR run; let push and schedule runs finish so a
-# default-branch result is never dropped.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -47,6 +45,9 @@ jobs:
         # page whose script the browser refuses to run — "search does
         # nothing", no error a user would see. Fix: node scripts/csp-hashes.mjs --write
         run: node scripts/csp-hashes.mjs --check
+
+      - name: Rollback SearXNG settings match the live ones
+        run: node scripts/searxng-proxy-settings.mjs --check
 
       - name: README and docs links resolve
         run: node scripts/check-readme-links.mjs
