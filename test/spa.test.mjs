@@ -195,3 +195,72 @@ describe('page contract', () => {
     }
   });
 });
+
+function warmHarness({ sessionStatus, turnstileLoaded = true }) {
+  const fetches = [];
+  let solves = 0;
+  const listeners = {};
+  const ctx = vm.createContext({
+    setTimeout,
+    fetch: async (url, opts = {}) => {
+      const token = opts.headers?.['cf-turnstile-token'] || '';
+      fetches.push({ url, token, credentials: opts.credentials });
+      return { status: token ? 200 : sessionStatus, ok: token ? true : sessionStatus === 200 };
+    },
+    document: {
+      getElementById: (id) => (id === 'ts-loader' ? { addEventListener: (ev, fn) => { listeners[ev] = fn; } } : null),
+    },
+  });
+  vm.runInContext(
+    `const API_BASE = 'https://api.amnesia.tax';
+     let _warmPromise = null;
+     let _tsReady = null;
+     ${turnstileLoaded ? 'var turnstile = {};' : ''}
+     ${functionSource(HTML, 'turnstileReady')}
+     function getTurnstileToken() { return turnstileReady().then(() => (typeof turnstile === 'undefined' ? '' : (__solve(), 'tok'))); }
+     ${functionSource(HTML, 'warmSession')}`,
+    Object.assign(ctx, { __solve: () => { solves++; } }),
+  );
+  return {
+    warm: () => vm.runInContext('warmSession()', ctx),
+    loadTurnstile: () => { vm.runInContext('var turnstile = {};', ctx); listeners.load(); },
+    fetches,
+    solves: () => solves,
+    loaderListens: () => typeof listeners.load === 'function',
+  };
+}
+
+describe('warmSession', () => {
+  test('a valid session cookie warms with one /session request and no Turnstile solve', async () => {
+    const h = warmHarness({ sessionStatus: 200 });
+    assert.equal(await h.warm(), true);
+    assert.equal(h.fetches.length, 1);
+    assert.equal(h.fetches[0].url, 'https://api.amnesia.tax/session');
+    assert.equal(h.fetches[0].token, '', 'the cookie is tried without a token');
+    assert.equal(h.fetches[0].credentials, 'include', 'the cookie is sent');
+    assert.equal(h.solves(), 0);
+  });
+
+  test('no cookie (401) solves Turnstile once and retries /session with the token', async () => {
+    const h = warmHarness({ sessionStatus: 401 });
+    assert.equal(await h.warm(), true);
+    assert.deepEqual(h.fetches.map((f) => f.token), ['', 'tok']);
+    assert.equal(h.solves(), 1);
+  });
+
+  test('waits for the deferred Turnstile loader after a 401', async () => {
+    const h = warmHarness({ sessionStatus: 401, turnstileLoaded: false });
+    const warmed = h.warm();
+    await new Promise((r) => setImmediate(r));
+    assert.ok(h.loaderListens(), 'waits on the loader script');
+    assert.equal(h.fetches.length, 1, 'no token request yet');
+    h.loadTurnstile();
+    assert.equal(await warmed, true);
+    assert.deepEqual(h.fetches.map((f) => f.token), ['', 'tok']);
+  });
+});
+
+test('the page preconnects to the API gate (credentialed, so no crossorigin) and loads Turnstile with the id turnstileReady waits on', () => {
+  assert.match(HTML, /<link rel="preconnect" href="https:\/\/api\.amnesia\.tax">/);
+  assert.match(HTML, /<script id="ts-loader" src="https:\/\/challenges\.cloudflare\.com\/turnstile\//);
+});
