@@ -1045,13 +1045,7 @@
       return el;
     }
 
-    // The loader <script> is deferred, so `turnstile` does not exist yet when
-    // this script runs and the page-load warm-up may need a token. Resolves
-    // once it does: at once if the script already ran, else on its load event.
-    // Also resolves (with `turnstile` still undefined) on a load error (e.g. a
-    // content blocker), a missing loader (the self-host image strips it) or
-    // after 10s, so a stalled script can never hang a search.
-    // turnstile.ready() is no help here: it throws when the script is deferred.
+    // Resolves when the deferred Turnstile loader has run, failed, is absent, or after 10s.
     let _tsReady = null;
     function turnstileReady() {
       if (_tsReady) return _tsReady;
@@ -1105,15 +1099,12 @@
     // Establish the signed session cookie ONCE so later searches + pagination
     // skip the ~9s Turnstile solve. Pre-warmed on page load; `_warmPromise` lets
     // the first search await it instead of racing it for a second token.
-    // Cookie first: a returning visitor still holding a valid cookie (the gate
-    // accepts it alone on /session) is ready after one round trip, with no
-    // solve. Only a 401 (no or expired cookie) pays for a Turnstile token.
+    // Cookie first: only a 401 from /session needs a Turnstile token.
     let _warmPromise = null;
     function warmSession() {
       if (!API_BASE) return Promise.resolve(true);   // local dev = same-origin
       if (_warmPromise) return _warmPromise;
-      // Listen on the loader now, while the page is still parsing: by the time
-      // a 401 comes back its load/error event may already have fired.
+      // Listen now: the loader's load or error event can fire before the 401 returns.
       turnstileReady();
       _warmPromise = (async () => {
         try {
