@@ -176,7 +176,6 @@ describe('session cookie', () => {
     assert.equal(originCalls().length, 1);
   });
 
-  /** A cookie whose session started `age` seconds ago and has `left` seconds to run. */
   const agedCookie = async (age, left) => {
     const start = String(nowS() - age);
     const exp = String(nowS() + left);
