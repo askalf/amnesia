@@ -3,7 +3,7 @@
 # self-test runs the script's tests on the PR's own code, read-only.
 # backfill (manual) posts them on every open PR, e.g. once they become required.
 # No concurrency group: a cancelled run rolls up as a failed check on the PR. The script
-# orders runs itself, so an older run never overwrites a newer one's statuses.
+# re-reads after posting and corrects what differs, so the last run to act leaves current statuses.
 name: Fleet status
 
 on:
