@@ -30,9 +30,10 @@
   <link rel="preload" href="/fonts/space-mono-400.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/fonts/space-mono-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%230a0a0f'/><text x='50' y='68' text-anchor='middle' font-size='56' font-family='system-ui' font-weight='700' fill='%238b5cf6'>a</text></svg>">
+  <link rel="preconnect" href="https://api.amnesia.tax">
   <!-- Cloudflare Turnstile: the API gate (api.amnesia.tax) requires a token so the
        zone's bot protection can stay on while cross-origin fetch() still works. -->
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+  <script id="ts-loader" src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
   <style>
 
     /* ==========================================
@@ -1040,12 +1041,27 @@
       return el;
     }
 
+    // Resolves when the deferred Turnstile loader has run, failed, is absent, or after 10s.
+    let _tsReady = null;
+    function turnstileReady() {
+      if (_tsReady) return _tsReady;
+      _tsReady = new Promise((resolve) => {
+        if (typeof turnstile !== 'undefined') { resolve(); return; }
+        const loader = document.getElementById('ts-loader');
+        if (!loader) { resolve(); return; }
+        loader.addEventListener('load', () => resolve());
+        loader.addEventListener('error', () => resolve());
+        setTimeout(resolve, 10000);
+      });
+      return _tsReady;
+    }
+
     // Single-flight: the invisible widget runs one execute() at a time (a second
     // concurrent call throws "already executing"). Share one in-flight promise.
     let _tokenInFlight = null;
     function getTurnstileToken() {
       if (_tokenInFlight) return _tokenInFlight;
-      _tokenInFlight = new Promise((resolve) => {
+      _tokenInFlight = turnstileReady().then(() => new Promise((resolve) => {
         if (typeof turnstile === 'undefined' || !TURNSTILE_SITE_KEY || TURNSTILE_SITE_KEY.indexOf('__') === 0) {
           resolve('');
           return;
@@ -1072,18 +1088,25 @@
         } catch (e) {
           resolve('');
         }
-      }).finally(() => { _tokenInFlight = null; });
+      })).finally(() => { _tokenInFlight = null; });
       return _tokenInFlight;
     }
 
     // Establish the signed session cookie ONCE so later searches + pagination
     // skip the ~9s Turnstile solve. Pre-warmed on page load; `_warmPromise` lets
     // the first search await it instead of racing it for a second token.
+    // Cookie first: only a 401 from /session needs a Turnstile token.
     let _warmPromise = null;
     function warmSession() {
       if (!API_BASE) return Promise.resolve(true);   // local dev = same-origin
       if (_warmPromise) return _warmPromise;
+      // Listen now: the loader's load or error event can fire before the 401 returns.
+      turnstileReady();
       _warmPromise = (async () => {
+        try {
+          const r = await fetch(API_BASE + '/session', { credentials: 'include' });
+          if (r.status !== 401) return r.ok;
+        } catch (e) { return false; }
         let token = '';
         try { token = await getTurnstileToken(); } catch (e) { token = ''; }
         if (!token) return false;

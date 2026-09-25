@@ -55,6 +55,7 @@ headers = {k.lower(): v for k, v in headers.items()}
 check(status == 200 and headers.get("content-type", "").startswith("text/html"), "/ serves HTML")
 check("<title>amnesia" in html, "/ is the amnesia page, not SearXNG's own UI")
 check("challenges.cloudflare.com" not in html, "the page loads nothing from Cloudflare (Turnstile loader stripped)")
+check('rel="preconnect"' not in html, "the page opens no connection to the hosted API (preconnect stripped)")
 check(re.search(r"const API_BASE = window\.location\.hostname === 'amnesia\.tax' \? 'https://api\.amnesia\.tax' : '';", html) is not None,
       "API_BASE is same-origin off the hosted apex")
 

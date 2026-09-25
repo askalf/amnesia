@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   attested to the registry. `image.yml` builds it and runs `image/smoke.py`
   against the container, plain and with the hardened run line, before main
   publishes it. The README's previous one-liner ran stock SearXNG, not amnesia.
-- **Tests.** `npm test` (node:test, zero dependencies): 46 tests driving the
+- **Tests.** `npm test` (node:test, zero dependencies): 50 tests driving the
   Worker's real default export (fail-closed, cookie forgery/expiry/splice,
   the Turnstile hostname check, CORS, the edge-cache key) and the SPA's URL
   guards run from the page's own bytes.
@@ -43,6 +43,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `onerror` that hid them. A capture-phase listener does it now.
 - The canary checked site 200 and gate 401 but never the origin lock's 403
   the README credited it with. It checks the 403 and the OpenSearch file now.
+- Faster first search. The page-load warm-up tries the session cookie on
+  `/session` first and solves Turnstile only on a 401, so a returning visitor
+  with a valid cookie no longer pays a challenge solve before their first
+  search. The Turnstile loader is now `defer` (was `async`) and the page waits
+  for it before solving: before, a warm-up that ran ahead of the script gave
+  up silently, and a first visit that searched straight from `?q=` could fail
+  with "Verification failed". A `<link rel=preconnect>` opens the connection to
+  `api.amnesia.tax` during parse; the self-host image strips it.
 - Docs said the session cookie lasts 30 minutes; the Worker issues 6 hours.
 
 ### Security
