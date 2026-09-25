@@ -6,11 +6,14 @@
 //     (forgery = free search access);
 //   - a cookie freshly minted by buildCookie always verifies under the same
 //     secret and never under a different one (sign/verify agree);
+//   - a renewed cookie keeps its solve time and never expires later than
+//     start + maxAge, whatever start the fuzzer picks;
 //   - timingSafeEqual never throws and only returns true for equal strings;
 //   - readCookie never throws parsing a hostile Cookie header.
 import {
   buildCookie,
   verifySession,
+  sessionTimes,
   timingSafeEqual,
   readCookie,
   COOKIE_NAME,
@@ -47,6 +50,19 @@ export async function fuzz(data) {
     if (await verifySession(forged, SECRET)) {
       throw new Error('spliced-expiry cookie forged a valid session');
     }
+  }
+
+  // Renewal from an older solve: the cap holds and the solve time carries over.
+  const now = Math.floor(Date.now() / 1000);
+  const maxAge = (data.length % 86400) + 3600;
+  const start = now - (data.length > 0 ? data[0] * 300 : 0);
+  if (start + maxAge > now) {
+    const renewed = await buildCookie(SECRET, ttl, start, maxAge);
+    const rv = renewed.slice(COOKIE_NAME.length + 1, renewed.indexOf(';'));
+    const t = sessionTimes(rv);
+    if (t.start !== start) throw new Error('renewal lost the solve time');
+    if (t.exp > start + maxAge) throw new Error('renewal extended a session past its cap');
+    if (!(await verifySession(rv, SECRET))) throw new Error('a renewed cookie failed to verify');
   }
 
   if (typeof timingSafeEqual(s, value) !== 'boolean') {

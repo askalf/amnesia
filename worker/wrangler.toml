@@ -28,6 +28,9 @@ ORIGIN_HOST = "https://search-origin.amnesia.tax"
 # 6h (was 30min): the cookie is just an HMAC-signed expiry — nothing
 # user-identifying — so a longer life cuts re-challenges at negligible risk.
 SESSION_TTL = "21600"
+# A cookie with under half its life left is renewed on the next request, but
+# never past this many seconds from the Turnstile solve that started it: 24h.
+SESSION_MAX_AGE = "86400"
 # Egress IP of the trusted front-end-verification bridge. Requests from this
 # IP skip Turnstile (the headless bridge can't solve it) but still pass
 # through the gate, the origin lock and the zone rate limit. Comma-separated;

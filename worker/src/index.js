@@ -31,6 +31,12 @@
  * Auth precedence: valid session cookie → allow (no Turnstile). Else a valid
  * `cf-turnstile-token` → allow AND (re)issue the cookie. Else 401.
  *
+ * Renewal: a valid cookie with less than half of SESSION_TTL left is re-issued
+ * on the same response, so a visitor who keeps searching doesn't meet the
+ * Turnstile solve when the cookie would have run out. The cookie carries the
+ * time of the solve that started it, and renewal never extends it past
+ * SESSION_MAX_AGE from then: one solve buys at most that long.
+ *
  * Cross-site cookie: page origin is amnesia.tax, cookie host is api.amnesia.tax,
  * so the cookie is SameSite=None; Secure and the SPA fetches with
  * credentials:'include'. CORS therefore echoes the specific origin (never '*')
@@ -43,6 +49,7 @@
  *   ORIGIN_HOST      (var)    — base URL of the SearXNG origin behind the tunnel
  *   ALLOWED_ORIGIN   (var)    — SPA origin allowed for CORS (https://amnesia.tax)
  *   SESSION_TTL      (var)    — cookie lifetime in seconds (default 1800)
+ *   SESSION_MAX_AGE  (var)    — cap on a renewed session, from its solve (default 86400)
  */
 
 const SITEVERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
@@ -55,6 +62,7 @@ export default {
     const url = new URL(request.url);
     const allowedOrigin = env.ALLOWED_ORIGIN || "https://amnesia.tax";
     const ttl = parseInt(env.SESSION_TTL || "1800", 10);
+    const maxAge = parseInt(env.SESSION_MAX_AGE || "86400", 10);
 
     // Fail closed if signing/verification secrets are missing. Without
     // SESSION_SECRET, hmac() would sign cookies with an empty key — forgeable by
@@ -99,6 +107,7 @@ export default {
     // --- Authorize: trusted-bridge bypass, else session cookie, else token --
     let authorized = false;
     let issueCookie = false;
+    let sessionStart; // a renewal keeps the solve time it started from
 
     // Trusted bridge bypass. The headless front-end-verification bridge runs on
     // the platform box and can't solve Turnstile from that datacenter IP. Allow
@@ -114,6 +123,11 @@ export default {
     const cookie = readCookie(request, COOKIE_NAME);
     if (!authorized && cookie && (await verifySession(cookie, env.SESSION_SECRET))) {
       authorized = true; // valid, unexpired session — skip Turnstile
+      const { start, exp } = sessionTimes(cookie);
+      if (needsRenewal(start, exp, ttl, maxAge)) {
+        issueCookie = true;
+        sessionStart = start;
+      }
     } else if (!authorized) {
       const token =
         request.headers.get("cf-turnstile-token") ||
@@ -144,7 +158,7 @@ export default {
     }
 
     const setCookie = issueCookie
-      ? { "set-cookie": await buildCookie(env.SESSION_SECRET, ttl) }
+      ? { "set-cookie": await buildCookie(env.SESSION_SECRET, ttl, sessionStart, maxAge) }
       : {};
 
     // Pre-warm endpoint: just establish the session, no search.
@@ -244,7 +258,10 @@ async function siteverify(token, secret, ip) {
   }
 }
 
-// ---- Signed session cookie (HMAC-SHA256 over expiry) ---------------------
+// ---- Signed session cookie (HMAC-SHA256 over start and expiry) ----------
+// Value: `start.exp.sig`, sig = HMAC(`start.exp`); start is the Turnstile
+// solve's time. Cookies from before renewal are `exp.sig`: they still verify
+// until they expire, and are not renewed.
 // The cookie helpers below are exported for the fuzz targets in /fuzz — the
 // cookie value is client-controlled input guarding auth, so its
 // forgery-resistance contract is machine-checked there. Named exports beside
@@ -261,22 +278,39 @@ export async function hmac(secret, msg) {
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export async function buildCookie(secret, ttl) {
-  const exp = Math.floor(Date.now() / 1000) + ttl;
-  const sig = await hmac(secret, String(exp));
-  const value = `${exp}.${sig}`;
-  return `${COOKIE_NAME}=${value}; Max-Age=${ttl}; Path=/; HttpOnly; Secure; SameSite=None`;
+export async function buildCookie(secret, ttl, start, maxAge = Infinity) {
+  const now = Math.floor(Date.now() / 1000);
+  if (start === undefined) start = now;
+  const exp = Math.min(now + ttl, start + maxAge);
+  const payload = `${start}.${exp}`;
+  const sig = await hmac(secret, payload);
+  return `${COOKIE_NAME}=${payload}.${sig}; Max-Age=${exp - now}; Path=/; HttpOnly; Secure; SameSite=None`;
 }
 
 export async function verifySession(value, secret) {
   const dot = value.lastIndexOf(".");
   if (dot < 0) return false;
-  const exp = value.slice(0, dot);
+  const payload = value.slice(0, dot);
   const sig = value.slice(dot + 1);
-  const expNum = parseInt(exp, 10);
+  if (!/^(\d+\.)?\d+$/.test(payload)) return false;
+  const expNum = parseInt(payload.slice(payload.lastIndexOf(".") + 1), 10);
   if (!expNum || expNum < Math.floor(Date.now() / 1000)) return false; // expired
-  const expected = await hmac(secret, exp);
+  const expected = await hmac(secret, payload);
   return timingSafeEqual(sig, expected);
+}
+
+// Only called on a value verifySession accepted. start is null for a cookie
+// from before renewal.
+export function sessionTimes(value) {
+  const parts = value.split(".");
+  if (parts.length === 2) return { start: null, exp: parseInt(parts[0], 10) };
+  return { start: parseInt(parts[0], 10), exp: parseInt(parts[1], 10) };
+}
+
+export function needsRenewal(start, exp, ttl, maxAge) {
+  if (start === null) return false;
+  const now = Math.floor(Date.now() / 1000);
+  return exp - now < ttl / 2 && exp < start + maxAge;
 }
 
 export function timingSafeEqual(a, b) {
