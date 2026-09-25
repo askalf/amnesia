@@ -110,8 +110,13 @@ jobs:
           TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          prs="$(gh pr list --repo "$REPO" --state open --limit 100 --json number,isCrossRepository \
-            --jq '.[] | select(.isCrossRepository | not) | .number')"
+          # gh pages past 100 on its own; at the cap, fail rather than skip PRs silently.
+          all="$(gh pr list --repo "$REPO" --state open --limit 1000 --json number,isCrossRepository)"
+          if [ "$(printf '%s' "$all" | jq 'length')" -ge 1000 ]; then
+            echo "::error::1000 or more open PRs; raise the backfill limit"
+            exit 1
+          fi
+          prs="$(printf '%s' "$all" | jq -r '.[] | select(.isCrossRepository | not) | .number')"
           for pr in $prs; do
             echo "== #$pr"
             PR="$pr" node scripts/fleet-status.mjs

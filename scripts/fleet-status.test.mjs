@@ -361,5 +361,26 @@ console.log('\n  required CI is the verification where the base branch requires 
   }
 }
 
+{
+  // The Second Read's own separator (U+2014) is built at run time, as are the other forms.
+  const reasonOf = (body) => secondReadAtHead(base({ reviews: [review(SECOND_READ_LOGIN, 'COMMENTED', HEAD, body)] })).reason;
+  for (const code of [0x2d, 0x3a, 0x2013, 0x2014]) {
+    const hex = code.toString(16).toUpperCase().padStart(4, '0');
+    check(`separator U+${hex} is dropped`, reasonOf(`SECOND READ: NOT READY ${String.fromCharCode(code)} stale stack`) === 'stale stack');
+  }
+  const line = `SECOND READ: NOT READY ${String.fromCharCode(0x2014)} \`x\` is null`;
+  const s = by(laneStatuses(base({ requiredCi: 'passed', reviews: [review(SECOND_READ_LOGIN, 'COMMENTED', HEAD, line)] })));
+  check('the Second Read verdict line is red with its reason', s[CONTEXTS.secondRead].state === 'failure'
+    && s[CONTEXTS.secondRead].description.endsWith('`x` is null'));
+}
+
+{
+  // backfill pages past one page of open PRs and stops loudly at its cap.
+  const wf = readFileSync(join(fileURLToPath(new URL('..', import.meta.url)), '.github', 'workflows', 'fleet-status.yml'), 'utf8');
+  const limit = Number(/gh pr list --repo "\$REPO" --state open --limit (\d+)/.exec(wf)?.[1] ?? 0);
+  check('backfill reads more than one page of open PRs', limit > 100);
+  check('backfill fails at its cap instead of skipping PRs', new RegExp(`-ge ${limit}\\b`).test(wf) && /::error::/.test(wf));
+}
+
 console.log(`\n  ${pass} pass, ${fail} fail`);
 if (fail > 0) process.exit(1);
