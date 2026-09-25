@@ -332,10 +332,10 @@ console.log('\n  required CI is the verification where the base branch requires 
 }
 
 {
-  // fleet-status.yml's workflow_run list names every workflow that runs on pull_request, so a
-  // required check it produces refreshes the lanes when it finishes. A workflow that runs only on
-  // pull_request_target is left out: it runs against the base branch's commit, so its checks
-  // never land on the PR head, and the status job drops its workflow_run events.
+  // fleet-status.yml's workflow_run list names every workflow that runs on pull_request or
+  // pull_request_target, so a required check it produces refreshes the lanes when it finishes.
+  // A pull_request_target run's checks land on the PR head too (its head_sha is the PR's), so the
+  // status job accepts workflow_run events from both.
   const dir = join(fileURLToPath(new URL('..', import.meta.url)), '.github', 'workflows');
   const own = readFileSync(join(dir, 'fleet-status.yml'), 'utf8');
   const listed = (/^  workflow_run:\s*\n\s+workflows:\s*\[([^\]]*)\]/m.exec(own)?.[1] ?? '')
@@ -352,13 +352,13 @@ console.log('\n  required CI is the verification where the base branch requires 
   };
   for (const f of readdirSync(dir).filter((x) => /\.ya?ml$/.test(x) && x !== 'fleet-status.yml')) {
     const y = readFileSync(join(dir, f), 'utf8');
-    const on = onBlock(y);
+    if (!/\bpull_request(_target)?\b/.test(onBlock(y))) continue;
     const name = (/^name:\s*(.+)$/m.exec(y)?.[1] ?? f).trim().replace(/^['"]|['"]$/g, '');
-    if (/\bpull_request\b(?!_target)/.test(on)) {
-      check(`workflow_run lists "${name}" (${f} runs on pull_request)`, listed.includes(name));
-    } else if (/\bpull_request_target\b/.test(on)) {
-      check(`workflow_run leaves out "${name}" (${f} runs only on pull_request_target)`, !listed.includes(name));
-    }
+    check(`workflow_run lists "${name}" (${f} runs on pull requests)`, listed.includes(name));
+  }
+  if (listed.length) {
+    check('the status job accepts workflow_run events from pull_request and pull_request_target runs',
+      /\["pull_request","pull_request_target"\]/.test(own));
   }
 }
 
