@@ -29,10 +29,11 @@ test('only recurring sponsors at $25/month and up are named', () => {
     node('under', 24),
     node('small', 5),
     node('once', 500, { isOneTimePayment: true }),
+    node('tieronce', 500, { tier: { monthlyPriceInDollars: 500, isOneTime: true } }),
   ]));
   assert.match(block, /- \[@big\]\(https:\/\/github\.com\/big\) \(Big Co\)/);
   assert.match(block, /\[@edge\]/);
-  assert.doesNotMatch(block, /under|small|once/);
+  assert.doesNotMatch(block, /under|small|once|tieronce/);
 });
 
 test('with nobody to name, the block is one sentence pointing at Sponsors', () => {
@@ -71,6 +72,10 @@ test('fetchSponsors follows every page before normalizing', async () => {
 test('fetchSponsors fails rather than loop on a cursor that does not advance', async () => {
   process.env.GH_TOKEN = 'test-token';
   await assert.rejects(fetchSponsors('askalf', async () => page([], true, null)), /did not advance/);
+  const repeat = [page([], true, 'c1'), page([], true, 'c1')];
+  await assert.rejects(fetchSponsors('askalf', async () => repeat.shift()), /did not advance/);
+  const lost = [page([], true, 'c1'), page([], true, null)];
+  await assert.rejects(fetchSponsors('askalf', async () => lost.shift()), /did not advance/);
 });
 
 test('a sponsor display name renders as text, never as Markdown or HTML', () => {

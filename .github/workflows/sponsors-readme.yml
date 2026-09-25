@@ -69,10 +69,17 @@ jobs:
           git checkout -B "$branch"
           git add README.md
           git commit -m "README: sponsors block refreshed $(date -u +%Y-%m-%dT%H:%MZ)"
+          existing="$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number // empty')"
+          # An open bot PR that already carries this block needs no new push:
+          # one would re-run its checks and reviews for the same README.
+          if [ -n "$existing" ] && git fetch --depth 1 origin "$branch" 2>/dev/null \
+              && git diff --quiet FETCH_HEAD HEAD -- README.md; then
+            echo "#$existing already carries this block"
+            exit 0
+          fi
           # One long-lived branch, force-pushed: the block is derived state,
           # so the newest run is the only one worth reviewing.
           git push --force origin "$branch"
-          existing="$(gh pr list --head "$branch" --base main --state open --json number --jq '.[0].number // empty')"
           if [ -n "$existing" ]; then
             echo "refreshed #$existing"
             exit 0
