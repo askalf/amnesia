@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Latency benchmarks, `scripts/bench/`.** `live.mjs` times a cold page load,
+  a warm reload, a search and a repeat search (edge-cache hit) in a real
+  browser against amnesia.tax or a self-host. `engines.mjs` runs the pinned
+  SearXNG with `infra/searxng/settings.yml` in Docker and reports per-engine
+  p50/p95 from SearXNG's `Server-Timing` header, failures, and how often each
+  engine was the one a search waited on. Both zero-dependency Node; the browser
+  one needs Playwright installed.
 - **Self-host image `ghcr.io/askalf/amnesia`.** `docker run -d -p 8080:8080
   ghcr.io/askalf/amnesia` runs the amnesia page and SearXNG in one container on
   one origin: no API host, no CORS, no bot gate, and no request to Cloudflare
