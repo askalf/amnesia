@@ -16,11 +16,12 @@
   <a href="https://scorecard.dev/viewer/?uri=github.com/askalf/amnesia"><img src="https://api.scorecard.dev/projects/github.com/askalf/amnesia/badge" alt="OpenSSF Scorecard"></a>
   <a href="https://www.bestpractices.dev/projects/14490"><img src="https://www.bestpractices.dev/projects/14490/badge" alt="OpenSSF Best Practices"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-8b5cf6" alt="MIT license"></a>
+  <a href="https://github.com/sponsors/askalf"><img src="https://img.shields.io/badge/sponsor-askalf-8b5cf6?logo=githubsponsors&logoColor=white" alt="Sponsor on GitHub"></a>
 </p>
 
 <sub>no accounts · no ads · no analytics · no query log · one ~45 KB HTML file · engine traffic only through a VPN · MIT</sub>
 
-<sub><a href="#use-it">Use it</a> · <a href="#run-your-own">Run your own</a> · <a href="#check-it-yourself">Check it yourself</a> · <a href="#who-sees-your-query">Who sees your query</a> · <a href="#how-its-built">How it's built</a> · <a href="#reference">Reference</a></sub>
+<sub><a href="#use-it">Use it</a> · <a href="#run-your-own">Run your own</a> · <a href="#check-it-yourself">Check it yourself</a> · <a href="#who-sees-your-query">Who sees your query</a> · <a href="#how-its-built">How it's built</a> · <a href="#reference">Reference</a> · <a href="#sponsor">Sponsor</a></sub>
 
 </div>
 
@@ -99,6 +100,14 @@ Amnesia doesn't protect against a global adversary watching both ends, a comprom
 - **[Engine coverage](docs/engines.md)**: what the hosted instance queries, why Google, Mojeek and Qwant are absent, and why engines get removed.
 - **[Self-host](docs/self-host.md)**: the one-container image, its hardened run line and options, and the full production shape.
 - **[README assets](scripts/readme/README.md)**: how the pictures on this page are made, and which one is generated from a live run.
+
+## Sponsor
+
+<!-- sponsors:start -->
+amnesia has no ads and no tracking, so it is funded by its users through [GitHub Sponsors](https://github.com/sponsors/askalf): the VPN exit and the server behind the hosted instance are the running costs. Sponsors at $25/month and up are listed here.
+<!-- sponsors:end -->
+
+<sub>This block comes from <a href="scripts/sponsors.mjs"><code>scripts/sponsors.mjs</code></a>, which reads the public sponsor list; <code>sponsors-readme.yml</code> opens a PR when it changes. Private sponsors are never named.</sub>
 
 ## Project
 
