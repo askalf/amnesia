@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-25
+
 ### Added
 - **Sponsors.** The page footers link to GitHub Sponsors ("no ads, funded by
   sponsors"): a plain link, no script or request, and `Referrer-Policy:
@@ -40,24 +42,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README rebuilt: art, a terminal generated from a live run of the checks
   (`scripts/readme/verify.mjs` writes nothing if a claim fails), the query
   path with what each party sees and keeps, and a README/docs link guard in CI.
-
-### Fixed
-- `/opensearch.xml` never existed, so "add amnesia to your browser" received
-  the HTML page. The file ships now, and `deploy.yml` builds the site with
-  `scripts/build-site.sh` instead of its own copy of the file list.
-- Image search kept broken thumbnail tiles: the hash CSP refuses the inline
-  `onerror` that hid them. A capture-phase listener does it now.
-- The canary checked site 200 and gate 401 but never the origin lock's 403
-  the README credited it with. It checks the 403 and the OpenSearch file now.
-- Faster first search. The page-load warm-up tries the session cookie on
-  `/session` first and solves Turnstile only on a 401, so a returning visitor
-  with a valid cookie no longer pays a challenge solve before their first
-  search. The Turnstile loader is now `defer` (was `async`) and the page waits
-  for it before solving: before, a warm-up that ran ahead of the script gave
-  up silently, and a first visit that searched straight from `?q=` could fail
-  with "Verification failed". A `<link rel=preconnect>` opens the connection to
-  `api.amnesia.tax` during parse; the self-host image strips it.
-- Docs said the session cookie lasts 30 minutes; the Worker issues 6 hours.
+- Continuous fuzzing of the API gate's auth boundary (ClusterFuzzLite +
+  Jazzer.js). `fuzz/session.fuzz.js` pins the Worker's signed-session-cookie
+  contract — the one input an anonymous internet client fully controls: it
+  never throws on a hostile cookie value, never verifies a value the operator's
+  `SESSION_SECRET` didn't sign (forgery = free, un-gated search past Turnstile),
+  and a `buildCookie` result always round-trips under its own secret and never
+  under another. The cookie helpers are now named exports beside the Worker's
+  default export (no runtime change). `cflite.yml` runs weekly; `npm run fuzz`
+  is the local loop. The target is async (WebCrypto HMAC), so it runs in
+  Jazzer's async mode — not `--sync`, which fires the promises without awaiting
+  and OOMs instead of fuzzing. Closes the OpenSSF Scorecard Fuzzing check.
+- Live search suggestions: debounced autocomplete dropdown backed by the API
+  gate's `/autocompleter` endpoint (keyboard navigation, click/tap select).
+  Best-effort — rides the session cookie and never triggers Turnstile solves.
 
 ### Changed
 - **The session cookie renews while in use.** A valid cookie with less than
@@ -67,45 +65,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   renewal never passes `SESSION_MAX_AGE` (24 h) from that solve, so one solve
   still buys a bounded session. Cookies issued before this (`exp.sig`) keep
   working until they expire and are not renewed.
-
-### Security
-- The gate's Turnstile bypass for the operator's verification bridge listed a
-  dynamic residential IP from a relay retired on 2026-09-12. Only the box's
-  own IP remains, and the privacy model now discloses the bypass.
-- The privacy model states two things it used to leave out: image search
-  loads each thumbnail from its own host (which sees your IP, but no
-  referrer), and the zone's Cloudflare managed transform currently overrides
-  some of `src/_headers` at the edge.
-
-### Security
-- VPN by topology, as an alternative stack shape: `infra/docker-compose.vpn.yml`
-  runs its own gluetun and puts SearXNG inside its network namespace
-  (`network_mode: "service:gluetun"`), so the only route out is the tunnel and
-  gluetun's firewall drops everything while the tunnel is down. Verified on the
-  host with the tunnel deliberately down: from inside the namespace DNS fails
-  and a direct-IP request times out, while the same image on the default
-  bridge leaves by the host IP. `hostname: gluetun` keeps
-  `searxng/settings.yml`'s proxy line working unchanged (it now names the
-  co-located proxy). Same container names, cache volume and loopback port as
-  the proxy shape, so cloudflared and the canary are untouched; cutover and
-  rollback are two `docker compose` lines each (DEPLOY.md 1b). **Live since
-  2026-09-13** on its own ProtonVPN session: egress leaves by the VPN exit with
-  no proxy flag (163.5.171.6, US, versus the host's own address), site 200,
-  gate 401, a real browser search returns results, and the README's VPN caveat
-  is retired.
-- CSP no longer carries `'unsafe-inline'`. The page's one `<script>` and one
-  `<style>` are allowed by SHA-256 hash; the four inline `onclick` handlers
-  became `data-action` attributes behind one delegated listener, and the two
-  inline `style` attributes became a CSS rule. `scripts/csp-hashes.mjs`
-  generates the header from the HTML (`--write`) and CI refuses a commit where
-  the two disagree (`--check`), because a stale hash would ship a page whose
-  script the browser silently refuses to run. Verified in a real browser under
-  the new header: zero `securitypolicyviolation` events across page load, a
-  full results render, and every button path. Cloudflare's Bot Fight Mode
-  injects its own inline script, which this CSP refuses; nothing here depends
-  on it, and the README says so.
-
-### Changed
 - **Faster searches, bounded by 3 s instead of 6 s.** A search waits for its
   slowest engine, and the main engines carried a 6 s timeout above the 4 s
   default; every enabled engine now shares a 3 s timeout (`max_request_timeout`
@@ -137,29 +96,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unverifiable "real-browser injection tests" claim (no such test is in the
   tree). Adds a hero capture of the live UI (`.github/readme-hero.webp`, 14 KB) and
   a working self-host path that names the `API_BASE` line to change.
-
-### Added
-- Continuous fuzzing of the API gate's auth boundary (ClusterFuzzLite +
-  Jazzer.js). `fuzz/session.fuzz.js` pins the Worker's signed-session-cookie
-  contract — the one input an anonymous internet client fully controls: it
-  never throws on a hostile cookie value, never verifies a value the operator's
-  `SESSION_SECRET` didn't sign (forgery = free, un-gated search past Turnstile),
-  and a `buildCookie` result always round-trips under its own secret and never
-  under another. The cookie helpers are now named exports beside the Worker's
-  default export (no runtime change). `cflite.yml` runs weekly; `npm run fuzz`
-  is the local loop. The target is async (WebCrypto HMAC), so it runs in
-  Jazzer's async mode — not `--sync`, which fires the promises without awaiting
-  and OOMs instead of fuzzing. Closes the OpenSSF Scorecard Fuzzing check.
-- Live search suggestions: debounced autocomplete dropdown backed by the API
-  gate's `/autocompleter` endpoint (keyboard navigation, click/tap select).
-  Best-effort — rides the session cookie and never triggers Turnstile solves.
-
-### Changed
 - `deploy.yml` workflow token drops to read-only at the top level; the
   `deployments: write` scope moves to the single deploy job. Closes the
   Scorecard Token-Permissions finding. No behavior change.
 
+### Fixed
+- `/opensearch.xml` never existed, so "add amnesia to your browser" received
+  the HTML page. The file ships now, and `deploy.yml` builds the site with
+  `scripts/build-site.sh` instead of its own copy of the file list.
+- Image search kept broken thumbnail tiles: the hash CSP refuses the inline
+  `onerror` that hid them. A capture-phase listener does it now.
+- The canary checked site 200 and gate 401 but never the origin lock's 403
+  the README credited it with. It checks the 403 and the OpenSearch file now.
+- Faster first search. The page-load warm-up tries the session cookie on
+  `/session` first and solves Turnstile only on a 401, so a returning visitor
+  with a valid cookie no longer pays a challenge solve before their first
+  search. The Turnstile loader is now `defer` (was `async`) and the page waits
+  for it before solving: before, a warm-up that ran ahead of the script gave
+  up silently, and a first visit that searched straight from `?q=` could fail
+  with "Verification failed". A `<link rel=preconnect>` opens the connection to
+  `api.amnesia.tax` during parse; the self-host image strips it.
+- Docs said the session cookie lasts 30 minutes; the Worker issues 6 hours.
+
 ### Security
+- The gate's Turnstile bypass for the operator's verification bridge listed a
+  dynamic residential IP from a relay retired on 2026-09-12. Only the box's
+  own IP remains, and the privacy model now discloses the bypass.
+- The privacy model states two things it used to leave out: image search
+  loads each thumbnail from its own host (which sees your IP, but no
+  referrer), and the zone's Cloudflare managed transform currently overrides
+  some of `src/_headers` at the edge.
+- VPN by topology, as an alternative stack shape: `infra/docker-compose.vpn.yml`
+  runs its own gluetun and puts SearXNG inside its network namespace
+  (`network_mode: "service:gluetun"`), so the only route out is the tunnel and
+  gluetun's firewall drops everything while the tunnel is down. Verified on the
+  host with the tunnel deliberately down: from inside the namespace DNS fails
+  and a direct-IP request times out, while the same image on the default
+  bridge leaves by the host IP. `hostname: gluetun` keeps
+  `searxng/settings.yml`'s proxy line working unchanged (it now names the
+  co-located proxy). Same container names, cache volume and loopback port as
+  the proxy shape, so cloudflared and the canary are untouched; cutover and
+  rollback are two `docker compose` lines each (DEPLOY.md 1b). **Live since
+  2026-09-13** on its own ProtonVPN session: egress leaves by the VPN exit with
+  no proxy flag (163.5.171.6, US, versus the host's own address), site 200,
+  gate 401, a real browser search returns results, and the README's VPN caveat
+  is retired.
+- CSP no longer carries `'unsafe-inline'`. The page's one `<script>` and one
+  `<style>` are allowed by SHA-256 hash; the four inline `onclick` handlers
+  became `data-action` attributes behind one delegated listener, and the two
+  inline `style` attributes became a CSS rule. `scripts/csp-hashes.mjs`
+  generates the header from the HTML (`--write`) and CI refuses a commit where
+  the two disagree (`--check`), because a stale hash would ship a page whose
+  script the browser silently refuses to run. Verified in a real browser under
+  the new header: zero `securitypolicyviolation` events across page load, a
+  full results render, and every button path. Cloudflare's Bot Fight Mode
+  injects its own inline script, which this CSP refuses; nothing here depends
+  on it, and the README says so.
 - Validate result/image URLs against an http(s) scheme allowlist before rendering
   links, blocking `javascript:`/`data:` injection from poisoned upstream results.
 - Escape engine names in the results footer (the one unescaped interpolation).
@@ -170,7 +162,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   GitHub-hosted runners; only push-to-main deploys use the self-hosted runner.
 - Pinned GitHub Actions to commit SHAs.
 
-## [1.0.0] - 2024
+## [1.0.0] - 2026-03-17
 
 ### Added
 - Static HTML search interface for privacy-first web search
