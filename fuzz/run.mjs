@@ -1,30 +1,43 @@
-// `npm run fuzz` — run every Jazzer.js target in ./fuzz for a short burst.
-// Continuous fuzzing is done in CI by ClusterFuzzLite (.github/workflows/
-// cflite.yml); this is the fast local repro loop. Targets import the Worker
-// source directly (no build step). Override the per-target budget with
-// FUZZ_SECONDS (default 30).
+// `node fuzz/run.mjs` (also `npm run fuzz`) runs every Jazzer.js target in ./fuzz. This is the
+// fuzzer CI runs (.github/workflows/fuzz.yml) and the local repro loop. Environment:
+//   FUZZ_SECONDS       per-target budget in seconds (default 30)
+//   FUZZ_CORPUS_DIR    root of per-target corpus dirs, created on demand; libFuzzer reads its
+//                      seeds from <dir>/<target> and saves every interesting input there, so a
+//                      corpus that persists between runs keeps getting deeper. Unset: no corpus.
+//   FUZZ_ARTIFACT_DIR  where a crashing input is written, created on demand. Unset: the cwd.
 import { spawnSync } from 'node:child_process';
-import { readdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { mkdirSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const targets = readdirSync(dir).filter((f) => f.endsWith('.fuzz.js')).sort();
 const secs = process.env.FUZZ_SECONDS || '30';
-// Run Jazzer's JS CLI directly under `node` — no .cmd wrapper, no shell, so a
-// space in the repo path can't break the invocation. The targets export an
-// ASYNC fuzz(data) (the Worker's cookie signing is WebCrypto), so we run in
-// Jazzer's async mode — NOT --sync, which fires the promises without awaiting
-// them and floods pending crypto ops into an OOM rather than fuzzing.
+const corpusRoot = process.env.FUZZ_CORPUS_DIR || '';
+const artifactDir = process.env.FUZZ_ARTIFACT_DIR || '';
+// Run Jazzer's JS CLI directly under `node`: no .cmd wrapper, no shell, so a space in the repo
+// path cannot break the invocation.
 const jazzerCli = createRequire(import.meta.url).resolve('@jazzer.js/core/dist/cli.js');
+if (artifactDir) mkdirSync(artifactDir, { recursive: true });
 
 for (const t of targets) {
-  console.log(`\n=== fuzzing ${t} (${secs}s) ===`);
-  const r = spawnSync(
-    process.execPath,
-    [jazzerCli, `fuzz/${t.replace(/\.js$/, '')}`, '--', `-max_total_time=${secs}`],
-    { stdio: 'inherit' },
-  );
-  if (r.status !== 0) process.exit(r.status || 1);
+  const name = t.replace(/\.fuzz\.js$/, '');
+  // The targets export an ASYNC fuzz(data) (the Worker's cookie signing is WebCrypto), so Jazzer runs
+  // in its async mode, NOT --sync, which would fire the promises without awaiting them and flood
+  // pending crypto ops into an OOM instead of fuzzing.
+  const args = [jazzerCli, `fuzz/${name}.fuzz`];
+  if (corpusRoot) {
+    const corpus = path.join(corpusRoot, name);
+    mkdirSync(corpus, { recursive: true });
+    args.push(corpus);
+  }
+  args.push('--', `-max_total_time=${secs}`, '-print_final_stats=1');
+  if (artifactDir) args.push(`-artifact_prefix=${artifactDir}${path.sep}`);
+  console.log(`\n=== fuzzing ${name} (${secs}s) ===`);
+  const r = spawnSync(process.execPath, args, { stdio: 'inherit' });
+  if (r.status !== 0) {
+    console.error(`\n${name}: jazzer exited with ${r.status ?? r.signal}; a reproducing input is in ${artifactDir || 'the working directory'}`);
+    process.exit(r.status || 1);
+  }
 }
