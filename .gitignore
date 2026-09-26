@@ -13,3 +13,6 @@ Thumbs.db
 
 # Pages build output (scripts/build-site.sh); assembled at build time, never committed
 deploy/
+# fuzz.yml / fuzz/run.mjs working dirs
+fuzz/corpus/
+fuzz/crashes/
