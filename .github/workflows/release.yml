@@ -49,6 +49,12 @@ jobs:
             exit 1
           fi
           node scripts/release-notes.mjs "$TAG" > "$RUNNER_TEMP/notes.md"
+          # A zero exit is not enough: a script that silently skips its main
+          # block also exits 0, and gh would publish empty notes.
+          if ! [ -s "$RUNNER_TEMP/notes.md" ]; then
+            echo "::error::release notes for $TAG are empty"
+            exit 1
+          fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "release $TAG already exists; leaving it as it is"
             exit 0
