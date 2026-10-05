@@ -36,7 +36,7 @@ Most private search engines ask you to trust a privacy policy. Amnesia is built 
 ## Run your own
 
 ```bash
-docker run -d -p 8080:8080 ghcr.io/askalf/amnesia
+docker run -d -p 127.0.0.1:8080:8080 ghcr.io/askalf/amnesia
 ```
 
 Open <http://localhost:8080>. It's the same page and the same SearXNG tuning in one container, and the page talks only to its own origin: no Cloudflare, no Turnstile, `connect-src 'self'`. The image is multi-arch, runs unprivileged, and ships SLSA build provenance you can check with `gh attestation verify`. From a home connection, it also turns back on the engines the hosted instance can't reach through a VPN. The [self-host guide](docs/self-host.md) covers the hardened run line, the options, and the full production shape (VPN by network namespace, tunnel, gated Worker).

@@ -80,6 +80,16 @@ jobs:
             --cap-drop ALL --security-opt no-new-privileges \
             -v amnesia-cache:/var/cache/searxng -p 127.0.0.1:18081:8080 amnesia:ci
           python3 image/smoke.py http://127.0.0.1:18081 || { docker logs amnesia-hardened 2>&1 | tail -60; exit 1; }
+          # The docs say unprivileged; prove it on the running process.
+          uid="$(docker exec amnesia-hardened id -u)"
+          [ "$uid" = 977 ] || { echo "::error::the container runs as uid $uid, not 977"; exit 1; }
+          # The per-container key must have been written to the volume, not
+          # fallen back to a throwaway one: restart and look for the warning.
+          docker restart amnesia-hardened >/dev/null
+          python3 image/smoke.py http://127.0.0.1:18081 >/dev/null
+          if docker logs amnesia-hardened 2>&1 | grep -qi 'not writable'; then
+            docker logs amnesia-hardened 2>&1 | tail -30; echo "::error::the secret key could not be persisted"; exit 1
+          fi
 
       - name: Teardown
         if: always()

@@ -2,12 +2,15 @@
 # (/etc/cloudflared/config.yml) ABOVE the final `service: http_status:404`
 # catch-all, then `systemctl restart cloudflared`.
 #
-# The api.amnesia.tax hostname rides the existing `askalf-platform` tunnel
-# (a tunnel can serve hostnames across multiple zones in the same CF account).
-# DNS: a proxied CNAME api.amnesia.tax -> <tunnel-id>.cfargotunnel.com, created
-# via `cloudflared tunnel route dns askalf-platform api.amnesia.tax`.
+# search-origin.amnesia.tax is the hostname the API gate Worker proxies to; the
+# public api.amnesia.tax is the Worker's route and needs no ingress of its own.
+# It rides the existing `askalf-platform` tunnel (a tunnel can serve hostnames
+# across multiple zones in the same CF account). DNS: a proxied CNAME
+# search-origin.amnesia.tax -> <tunnel-id>.cfargotunnel.com, created via
+# `cloudflared tunnel route dns askalf-platform search-origin.amnesia.tax`.
+# Lock it to the Worker with the WAF rule in worker/DEPLOY.md step 4.
 
-  - hostname: api.amnesia.tax
+  - hostname: search-origin.amnesia.tax
     service: http://localhost:8081
     originRequest:
       connectTimeout: 30s

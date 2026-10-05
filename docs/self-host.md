@@ -5,16 +5,18 @@ Back to the [README](../README.md).
 ## One container
 
 ```bash
-docker run -d --name amnesia -p 8080:8080 ghcr.io/askalf/amnesia
+docker run -d --name amnesia -p 127.0.0.1:8080:8080 ghcr.io/askalf/amnesia
 ```
 
-Open <http://localhost:8080>. That is the amnesia.tax page and SearXNG in one image, served from one origin:
+Open <http://localhost:8080>. (`127.0.0.1:` keeps it on this machine: a bare `-p 8080:8080` publishes it on every interface, past most host firewalls, and the image has no gate. Drop the prefix only on purpose; see below.) That is the amnesia.tax page and SearXNG in one image, served from one origin:
 
-- **The same page as amnesia.tax.** The container serves [`src/amnesia-search.html`](../src/amnesia-search.html) at `/` and hands `/search`, `/autocompleter` and the image proxy to SearXNG on the same origin, so there is no API host, no CORS and no bot gate. The page picks this up by itself: `API_BASE` is the hosted Worker only on `amnesia.tax` and same-origin everywhere else.
+- **The same page as amnesia.tax.** The container serves [`src/amnesia-search.html`](../src/amnesia-search.html) at `/` and hands `/search` and `/autocompleter` to SearXNG on the same origin, so there is no API host, no CORS and no bot gate. The page picks this up by itself: `API_BASE` is the hosted Worker only on `amnesia.tax` and same-origin everywhere else.
 - **No request to Cloudflare.** The Turnstile loader is removed from the page the container serves, and its Content-Security-Policy is `connect-src 'self'` with no third-party origin, so the page cannot send your query anywhere but your own container. The CSP allows the page's one script and one style by SHA-256 hash, computed from the bytes served.
-- **amnesia's SearXNG tuning**, from [`image/settings.yml`](../image/settings.yml): JSON output on, image proxy on, metrics off, the outgoing timeouts that keep a slow engine from holding a search, and the engines that are broken for everyone switched off. The engines amnesia.tax disables only because they refuse VPN and datacenter IPs (Google, Mojeek, Qwant, Startpage and others) are **on** here: from an IP they accept they answer, and from one they refuse SearXNG suspends them and moves on.
+- **amnesia's SearXNG tuning**, from [`image/settings.yml`](../image/settings.yml): JSON output on, metrics off, the outgoing timeouts that keep a slow engine from holding a search, and the engines that are broken for everyone switched off. The engines amnesia.tax disables only because they refuse VPN and datacenter IPs (Google, Mojeek, Qwant, Startpage and others) are **on** here: from an IP they accept they answer, and from one they refuse SearXNG suspends them and moves on.
 - **Its own secret.** Each container generates a random `secret_key` on first start and keeps it in `/var/cache/searxng`, unless you pass `SEARXNG_SECRET`. The baked settings carry SearXNG's refuse-to-start placeholder, so a run that skips the entrypoint fails closed rather than using a key published in this repo.
-- **Unprivileged.** The container runs as SearXNG's `searxng` user, not root.
+- **Unprivileged.** The container runs as SearXNG's `searxng` user (uid 977), not root.
+
+**Thumbnails still come from their hosts.** Image search shows each thumbnail from the URL the engine reported, so those hosts see the IP your browser uses, as on amnesia.tax. SearXNG's `image_proxy` is on, but it only rewrites SearXNG's own HTML pages; the JSON this page reads is never proxied.
 
 **The hardened run line.** Read-only root filesystem, no Linux capabilities, no privilege escalation, a named volume for the key, and bound to loopback. [`image.yml`](../.github/workflows/image.yml) runs the full smoke test against exactly this line on every change:
 

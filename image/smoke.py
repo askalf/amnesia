@@ -75,7 +75,8 @@ inline_scripts = [m.group(2) for m in re.finditer(r"<script\b([^>]*)>([\s\S]*?)<
 inline_styles = [m.group(1) for m in re.finditer(r"<style\b[^>]*>([\s\S]*?)</style>", html)]
 check(bool(inline_scripts) and all(sha(s) in csp for s in inline_scripts),
       "CSP hash matches the served inline <script> (the page's JS will run)")
-check(all(sha(s) in csp for s in inline_styles), "CSP hash matches the served inline <style>")
+check(bool(inline_styles) and all(sha(s) in csp for s in inline_styles),
+      "CSP hash matches the served inline <style>")
 
 status, headers, _ = get("/fonts/space-mono-400.woff2")
 check(status == 200 and "font/woff2" in {k.lower(): v for k, v in headers.items()}.get("content-type", ""),
