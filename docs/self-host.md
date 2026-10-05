@@ -54,7 +54,7 @@ docker compose -f infra/docker-compose.vpn.yml up -d
 ## Layout
 
 ```
-src/                 the SPA (~45 KB, self-contained) + _headers (CSP) + fonts + opensearch + og + robots + sitemap
+src/                 the SPA (~50 KB, self-contained) + _headers (CSP) + fonts + opensearch + og + robots + sitemap
 worker/              API-gate Worker: Turnstile → HMAC session, /search /autocompleter /session /healthz
 image/               the self-host image: Dockerfile, SearXNG settings, entrypoint, the same-origin app, smoke test
 infra/               production mirror: compose (VPN namespace), SearXNG settings, tunnel ingress, DEPLOY.md
