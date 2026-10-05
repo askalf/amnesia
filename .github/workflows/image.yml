@@ -10,9 +10,10 @@ name: Image
 # (amd64 + arm64) as :latest and :sha-<commit>, with SLSA build provenance
 # attested to the registry.
 #
-# No GitHub release is created, deliberately: the repo has none, so
-# Scorecard's Signed-Releases check is unscored, and a release whose assets
-# carry no provenance file would score it 8 and pull the overall down.
+# No release asset is uploaded, deliberately: release.yml's releases carry
+# notes only, so Scorecard's Signed-Releases check is unscored, and a release
+# whose assets carry no provenance file would score it 8 and pull the overall
+# down.
 # Provenance lives on the image instead; verify it with
 #   gh attestation verify oci://ghcr.io/askalf/amnesia:latest --owner askalf
 

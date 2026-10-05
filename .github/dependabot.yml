@@ -15,10 +15,15 @@ updates:
 
   # npm: the fuzz devDependency (@jazzer.js/core) — the only npm surface in the
   # repo (site is static, Worker is zero-dep).
+  # Labels pinned: Dependabot's npm default adds `javascript`, which is not in
+  # .github/labels.json, and the first such PR would auto-create it and turn
+  # labels.yml (declared == live) red on main.
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
+    labels:
+      - "dependencies"
 
   # Keeps the digest-pinned ClusterFuzzLite base image tracking upstream —
   # OSS-Fuzz pushes new builder images often, and a stale pin would slowly
@@ -35,3 +40,16 @@ updates:
     directory: "/image"
     schedule:
       interval: "weekly"
+
+  # The hosted stack's digest pins (infra/docker-compose*.yml): SearXNG, which
+  # image/Dockerfile must match, and gluetun, the VPN kill switch. The `docker`
+  # ecosystem reads Dockerfiles only, so without this neither ever moved.
+  # Labels pinned to declared ones (see the npm entry).
+  - package-ecosystem: "docker-compose"
+    directory: "/infra"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "infra"

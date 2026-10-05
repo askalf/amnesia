@@ -88,3 +88,18 @@ jobs:
           gh pr create --head "$branch" --base main \
             --title "README: sponsors block refreshed" \
             --body 'The public sponsor list changed; this is the README block rebuilt from it by `scripts/sponsors.mjs`. Private sponsors are never named.'
+
+      - name: Close a bot PR the sponsor list no longer supports
+        # The list went back to matching main (a sponsor left or went private
+        # before the PR merged). Left open, that PR would still name them.
+        if: steps.sync.outputs.changed == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.AMNESIA_BOT_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          existing="$(gh pr list --head bot/sponsors-readme --base main --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh pr close "$existing" --delete-branch \
+              --comment "The public sponsor list matches main again, so this block is stale. Closed by sponsors-readme.yml."
+            echo "closed #$existing"
+          fi

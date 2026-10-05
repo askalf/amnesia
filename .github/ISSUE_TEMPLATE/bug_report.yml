@@ -21,9 +21,10 @@ body:
       label: Component
       options:
         - Search UI
+        - API gate (Worker)
         - SearXNG Backend
         - VPN / Gluetun
-        - Nginx
+        - Self-host image
         - Docker / Deployment
         - Other
     validations:
