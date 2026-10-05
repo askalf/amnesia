@@ -26,7 +26,8 @@ for (const t of targets) {
   // The targets export an ASYNC fuzz(data) (the Worker's cookie signing is WebCrypto), so Jazzer runs
   // in its async mode, NOT --sync, which would fire the promises without awaiting them and flood
   // pending crypto ops into an OOM instead of fuzzing.
-  const args = [jazzerCli, `fuzz/${name}.fuzz`];
+  // Absolute, so the run doesn't depend on the working directory.
+  const args = [jazzerCli, path.join(dir, `${name}.fuzz`)];
   if (corpusRoot) {
     const corpus = path.join(corpusRoot, name);
     mkdirSync(corpus, { recursive: true });
