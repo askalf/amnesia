@@ -9,7 +9,9 @@ permissions: {}
 
 jobs:
   backfill:
-    runs-on: ubuntu-latest
+    # Dispatch only, so only our own branches run here: on amnesia-exec, a backfill of the
+    # fleet/verify and fleet/review statuses does not wait on GitHub's hosted queue.
+    runs-on: [self-hosted, amnesia-exec]
     timeout-minutes: 10
     permissions:
       contents: read
