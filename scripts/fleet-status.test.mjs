@@ -514,40 +514,49 @@ console.log('\n  fleet-status.yml: which events run the job for a fork');
     && checkouts.every((m) => /ref: \$\{\{ github\.event\.repository\.default_branch \}\}/.test(m[1])));
   check('no step reads the PR head ref or sha', !/(pull_request\.head\.(ref|sha)|workflow_run\.head_sha)/.test(own));
 
-  // Our own code runs on amnesia-exec, our host's runners; code nobody here wrote never does. A
-  // runs-on expression sends a fork's PR and a Dependabot PR to GitHub's runners and everything
-  // else to ours. A literal amnesia-exec on a workflow that PRs trigger must be a job that never runs PR
-  // code (fleet-status, checked above) or keep forks off with a job if:.
+  // Our own code runs on amnesia-exec, our host's runners; code nobody here wrote never does, and a fork
+  // repository, which has no amnesia-exec runners, never waits for one. The own-code expression sends a
+  // fork's PR, a Dependabot PR and any run in a fork repository to GitHub's runners and everything
+  // else to ours. The repository-only expression, for jobs that never run PR code, sends everything
+  // here to ours. A literal amnesia-exec needs a job if: that keeps it to this repository's own code.
   const OWN_RE = /^\s+runs-on: \$\{\{ (.+) \}\}$/;
-  const exprs = [];
+  const HOME_REPO = 'askalf/amnesia';
+  const ownExprs = [];
+  const repoOnly = [];
   const literal = [];
   for (const f of readdirSync(dir).filter((x) => /\.ya?ml$/.test(x))) {
     const y = readFileSync(join(dir, f), 'utf8');
     for (const line of y.split('\n')) {
       const m = OWN_RE.exec(line);
-      if (m && m[1].includes('amnesia-exec')) exprs.push({ f, e: m[1] });
-      else if (/^\s+runs-on: \[self-hosted, amnesia-exec\]/.test(line)) literal.push(f);
+      if (m && m[1].includes('amnesia-exec')) (m[1].includes('github.event.pull_request') ? ownExprs : repoOnly).push({ f, e: m[1] });
+      else if (/^\s+runs-on: \[self-hosted, amnesia\-exec\]/.test(line)) literal.push(f);
     }
   }
-  check('the own-code runs-on expression is in use', exprs.length >= 5);
-  const hosted = (e, github) => evalIf(`(${e}) == 'ubuntu-latest'`, { github: { repository: REPO, ...github } });
+  check('the own-code runs-on expression is in use', ownExprs.length >= 4);
+  const hosted = (e, github, repository = HOME_REPO) => evalIf(`(${e}) == 'ubuntu-latest'`, { github: { repository, ...github } });
   const prFrom = (event_name, headRepo, login = 'askalf') =>
     ({ event_name, event: { pull_request: { head: { repo: { full_name: headRepo } }, user: { login } } } });
-  for (const { f, e } of exprs) {
+  const EVENTS = [{ event_name: 'push', event: {} }, { event_name: 'schedule', event: {} }, { event_name: 'workflow_dispatch', event: {} }];
+  const FORK_REPO = 'someone/amnesia';
+  for (const { f, e } of ownExprs) {
     check(`${f}: a fork's pull_request runs on GitHub's runners`, hosted(e, prFrom('pull_request', FORKED)));
     check(`${f}: a fork's pull_request_review runs on GitHub's runners`, hosted(e, prFrom('pull_request_review', FORKED)));
-    check(`${f}: a Dependabot PR runs on GitHub's runners`, hosted(e, prFrom('pull_request', REPO, 'dependabot[bot]')));
-    check(`${f}: a same-repo PR runs on ours`, !hosted(e, prFrom('pull_request', REPO)));
-    check(`${f}: a push, schedule or dispatch runs on ours`,
-      !hosted(e, { event_name: 'push', event: {} }) && !hosted(e, { event_name: 'schedule', event: {} })
-      && !hosted(e, { event_name: 'workflow_dispatch', event: {} }));
+    check(`${f}: a Dependabot PR runs on GitHub's runners`, hosted(e, prFrom('pull_request', HOME_REPO, 'dependabot[bot]')));
+    check(`${f}: a same-repo PR runs on ours`, !hosted(e, prFrom('pull_request', HOME_REPO)));
+    check(`${f}: a push, schedule or dispatch runs on ours`, EVENTS.every((ev) => !hosted(e, ev)));
+    check(`${f}: in a fork repository every event runs on GitHub's runners`,
+      EVENTS.every((ev) => hosted(e, ev, FORK_REPO)) && hosted(e, prFrom('pull_request', FORK_REPO), FORK_REPO));
     check(`${f}: the expression names exactly our label`, e.includes(`fromJSON('["self-hosted","amnesia-exec"]')`));
+  }
+  for (const { f, e } of repoOnly) {
+    check(`${f}: every event here runs on ours`, EVENTS.every((ev) => !hosted(e, ev)) && !hosted(e, prFrom('pull_request', FORKED)));
+    check(`${f}: in a fork repository it runs on GitHub's runners`, EVENTS.every((ev) => hosted(e, ev, FORK_REPO)));
+    check(`${f}: only a job that never runs PR code uses it`, ['fleet-status.yml', 'fleet-status-backfill.yml'].includes(f));
   }
   for (const f of literal) {
     const y = readFileSync(join(dir, f), 'utf8');
-    const prTriggered = /\bpull_request(_target|_review)?\b/.test(onBlockOf(y));
-    check(`${f}: a literal amnesia-exec is on a workflow no fork can run, or keeps forks off it`,
-      !prTriggered || f === 'fleet-status.yml' || /head\.repo\.full_name == github\.repository/.test(y));
+    check(`${f}: a literal amnesia-exec job runs only in this repository, or only on its own PRs`,
+      y.includes(`github.repository == '${HOME_REPO}'`) || /head\.repo\.full_name == github\.repository/.test(y));
   }
 
   let relay = '';

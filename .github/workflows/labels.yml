@@ -32,11 +32,11 @@ permissions:
 jobs:
   manifest:
     name: manifest matches the repo
-    # Our own code (pushes, same-repo PRs, schedules, dispatches) runs on amnesia-exec, the
-    # non-root one-job runners on our host (platform deploy/gha-runners), so GitHub's hosted
-    # queue going down does not hold our PRs. A fork's PR and a Dependabot PR run code nobody
-    # here wrote, so they stay on GitHub's runners.
-    runs-on: ${{ github.event.pull_request && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') && 'ubuntu-latest' || fromJSON('["self-hosted","amnesia-exec"]') }}
+    # Our own code (pushes, same-repo PRs, schedules, dispatches) runs on amnesia-exec, our non-root
+    # one-job runners, so GitHub's hosted queue going down does not hold our PRs. A fork's PR
+    # and a Dependabot PR run code nobody here wrote, and a fork repository has no amnesia-exec
+    # runners, so those stay on GitHub's runners.
+    runs-on: ${{ (github.repository != 'askalf/amnesia' || github.event.pull_request && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || fromJSON('["self-hosted","amnesia-exec"]') }}
     timeout-minutes: 3
     permissions:
       contents: read
