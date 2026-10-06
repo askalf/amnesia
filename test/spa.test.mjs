@@ -269,3 +269,218 @@ test('the page preconnects to the API gate (credentialed, so no crossorigin) and
   assert.match(HTML, /<link rel="preconnect" href="https:\/\/api\.amnesia\.tax">/);
   assert.match(HTML, /<script id="ts-loader" src="https:\/\/challenges\.cloudflare\.com\/turnstile\//);
 });
+
+/**
+ * The page's whole inline script, run in a vm context with just enough DOM
+ * for it to boot. History is a real entry stack (push truncates the forward
+ * entries, back/forward fire popstate), fetches stay pending until the test
+ * answers them, and timers only run when the test says so.
+ */
+function pageHarness({ url = '/', storageThrows = false } = {}) {
+  class FakeElement {
+    constructor() {
+      this.listeners = {};
+      this.style = {};
+      this.dataset = {};
+      this.attrs = {};
+      this.innerHTML = '';
+      this.value = '';
+      this.className = '';
+      const classes = new Set();
+      this.classList = {
+        add: (c) => classes.add(c),
+        remove: (c) => classes.delete(c),
+        contains: (c) => classes.has(c),
+        toggle: (c, on = !classes.has(c)) => (on ? classes.add(c) : classes.delete(c)),
+      };
+    }
+    addEventListener(ev, fn) { (this.listeners[ev] ||= []).push(fn); }
+    dispatch(ev, e = {}) { for (const fn of this.listeners[ev] || []) fn(e); }
+    setAttribute(k, v) { this.attrs[k] = String(v); }
+    getAttribute(k) { return this.attrs[k] ?? null; }
+    querySelectorAll() { return []; }
+    appendChild(c) { return c; }
+    focus() { document.activeElement = this; }
+    set textContent(s) { this.innerHTML = String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  }
+
+  const ids = ['q', 'shell', 'subtitle', 'content', 'categoryTabs', 'themeToggle', 'toggleIcon', 'themeColor', 'logo', 'acDropdown'];
+  const el = Object.fromEntries(ids.map((id) => [id, new FakeElement()]));
+  el.shell.className = 'shell landing';
+  const document = {
+    getElementById: (id) => el[id] ?? null,
+    createElement: () => new FakeElement(),
+    addEventListener: () => {},
+    documentElement: new FakeElement(),
+    body: new FakeElement(),
+    activeElement: el.q,
+  };
+
+  const win = new FakeElement();
+  const location = { hostname: 'localhost', origin: 'http://localhost', search: '' };
+  const entries = [url];
+  let at = 0;
+  const sync = () => { location.search = new URL(entries[at], location.origin).search; };
+  sync();
+  const history = {
+    pushState(_s, _t, u) { entries.splice(at + 1); entries.push(u); at++; sync(); },
+    replaceState(_s, _t, u) { entries[at] = u; sync(); },
+    back() { if (at > 0) { at--; sync(); win.dispatch('popstate'); } },
+    forward() { if (at < entries.length - 1) { at++; sync(); win.dispatch('popstate'); } },
+  };
+  Object.assign(win, { location, scrollTo: () => {} });
+
+  const timers = new Map();
+  let timerId = 0;
+  const fetches = [];
+  const storage = () => { if (storageThrows) throw new Error('SecurityError'); return null; };
+
+  const ctx = vm.createContext({
+    window: win, document, location, history, URL, URLSearchParams, AbortController, performance,
+    localStorage: { getItem: storage, setItem: storage },
+    setTimeout: (fn) => { timers.set(++timerId, fn); return timerId; },
+    clearTimeout: (id) => { timers.delete(id); },
+    fetch: (u, opts = {}) => new Promise((resolve, reject) => {
+      const f = { url: u, signal: opts.signal };
+      f.respond = (data) => resolve({ ok: true, status: 200, json: async () => data });
+      opts.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      fetches.push(f);
+    }),
+  });
+  const script = splitBlocks(HTML, 'script').inner.find((s) => s.includes('function doSearch('));
+  vm.runInContext(script, ctx);
+
+  const searches = () => fetches.filter((f) => f.url.startsWith('/search?'));
+  return {
+    el,
+    fetches,
+    searches,
+    history,
+    entries: () => [...entries],
+    index: () => at,
+    /** Answer the pending /search for `query` with one result titled `<query>-result`. */
+    respond: (query) => {
+      const f = searches().find((s) => new URL(s.url, location.origin).searchParams.get('q') === query && !s.done);
+      assert.ok(f, `no pending search for ${query}`);
+      f.done = true;
+      f.respond({ results: [{ url: `https://example.com/${query}`, title: `${query}-result` }] });
+    },
+    type: (text) => { el.q.value = text; el.q.dispatch('input'); },
+    enter: (text) => {
+      if (text !== undefined) el.q.value = text;
+      el.q.dispatch('keydown', { key: 'Enter', keyCode: 13, isComposing: false, preventDefault() {} });
+    },
+    runTimers: () => { for (const [id, fn] of [...timers]) { timers.delete(id); fn(); } },
+  };
+}
+
+const settle = () => new Promise((r) => setImmediate(r));
+
+describe('search history and rendering order', () => {
+  test('a ?q= link searches on load and replaces its entry instead of pushing one', async () => {
+    const h = pageHarness({ url: '/?q=cats' });
+    assert.deepEqual(h.entries(), ['/?q=cats']);
+    assert.equal(h.searches().length, 1);
+    h.respond('cats');
+    await settle();
+    assert.equal(h.el.shell.className, 'shell results-mode');
+    assert.match(h.el.content.innerHTML, /cats-result/);
+  });
+
+  test('a new search pushes one entry', async () => {
+    const h = pageHarness();
+    h.enter('cats');
+    assert.deepEqual(h.entries(), ['/', '/?q=cats']);
+    h.enter('dogs');
+    assert.deepEqual(h.entries(), ['/', '/?q=cats', '/?q=dogs']);
+  });
+
+  test('Back and Forward re-run the search without pushing or losing the forward entry', async () => {
+    const h = pageHarness();
+    h.enter('cats'); h.respond('cats');
+    h.enter('dogs'); h.respond('dogs');
+    await settle();
+    const stack = ['/', '/?q=cats', '/?q=dogs'];
+
+    h.history.back();
+    assert.deepEqual(h.entries(), stack, 'Back pushed an entry or cleared the forward stack');
+    assert.equal(h.index(), 1);
+    assert.equal(h.el.q.value, 'cats');
+    h.respond('cats');
+    await settle();
+    assert.match(h.el.content.innerHTML, /cats-result/);
+
+    h.history.forward();
+    assert.deepEqual(h.entries(), stack, 'Forward pushed an entry');
+    assert.equal(h.index(), 2);
+    h.respond('dogs');
+    await settle();
+    assert.match(h.el.content.innerHTML, /dogs-result/);
+    assert.doesNotMatch(h.el.content.innerHTML, /cats-result/);
+  });
+
+  test('an older search answering after a newer one does not replace it', async () => {
+    const h = pageHarness();
+    h.enter('old');
+    h.enter('new');
+    h.respond('new');
+    await settle();
+    assert.match(h.el.content.innerHTML, /new-result/);
+    h.respond('old');
+    await settle();
+    assert.match(h.el.content.innerHTML, /new-result/);
+    assert.doesNotMatch(h.el.content.innerHTML, /old-result/);
+  });
+
+  test('Back to the landing page while a search is pending keeps the landing page', async () => {
+    const h = pageHarness();
+    h.enter('cats');
+    h.history.back();
+    assert.equal(h.el.shell.className, 'shell landing');
+    h.respond('cats');
+    await settle();
+    assert.equal(h.el.shell.className, 'shell landing');
+    assert.equal(h.el.content.innerHTML, '');
+  });
+
+  test('the logo returns to the landing page even with a search pending', async () => {
+    const h = pageHarness();
+    h.enter('cats');
+    h.el.logo.dispatch('click');
+    assert.deepEqual(h.entries(), ['/', '/?q=cats', '/']);
+    h.respond('cats');
+    await settle();
+    assert.equal(h.el.shell.className, 'shell landing');
+    assert.equal(h.el.content.innerHTML, '');
+  });
+
+  test('Enter cancels a debounced autocomplete before it fetches', async () => {
+    const h = pageHarness();
+    h.type('cats');
+    h.enter();
+    h.runTimers();
+    await settle();
+    assert.ok(!h.fetches.some((f) => f.url.startsWith('/autocompleter')), 'autocomplete fetched after Enter');
+    assert.ok(!h.el.acDropdown.classList.contains('open'));
+  });
+
+  test('Enter aborts an in-flight autocomplete so it cannot reopen over the results', async () => {
+    const h = pageHarness();
+    h.type('cats');
+    h.runTimers();
+    const ac = h.fetches.find((f) => f.url.startsWith('/autocompleter'));
+    assert.ok(ac, 'autocomplete fetched after the debounce');
+    h.enter();
+    assert.equal(ac.signal.aborted, true);
+    ac.respond(['cats', ['cats and dogs']]);
+    await settle();
+    assert.ok(!h.el.acDropdown.classList.contains('open'));
+  });
+
+  test('search still works when storage access throws', async () => {
+    const h = pageHarness({ url: '/?q=cats', storageThrows: true });
+    h.respond('cats');
+    await settle();
+    assert.match(h.el.content.innerHTML, /cats-result/);
+  });
+});
