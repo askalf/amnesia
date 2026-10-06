@@ -13,8 +13,9 @@ on:
     - cron: '37 6 * * 1' # weekly, Monday 06:37 UTC (staggered off the :00 grid)
   workflow_dispatch:
   # Build only, on PRs that change what the build consumes: the digest-pinned
-  # base image (Dependabot bumps it weekly), build.sh, and the .dockerignore
-  # whitelist. Without this a broken build merged and surfaced the next Monday.
+  # base image (Dependabot bumps it weekly), build.sh, the fuzz targets, the
+  # npm manifests and the .dockerignore whitelist. A PR that breaks the fuzz
+  # build fails here instead of on the weekly scheduled run.
   pull_request:
     paths:
       - '.clusterfuzzlite/**'
