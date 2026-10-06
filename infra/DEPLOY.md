@@ -111,7 +111,7 @@ An engine that keeps timing out at the 3 s ceiling is a candidate for
 `disabled: true` (with a dated reason, like the others) rather than a longer
 timeout: its timeout is every search's deadline.
 
-## 2. DNS — both hostnames on the tunnel
+## 2. DNS: both hostnames on the tunnel
 
 `api.amnesia.tax` is the public API, but the API gate Worker's route takes it
 over (`worker/wrangler.toml`); it needs a proxied record only so the route has

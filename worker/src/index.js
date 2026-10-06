@@ -57,7 +57,7 @@
  *   ALLOWED_ORIGIN   (var)    — SPA origin allowed for CORS (https://amnesia.tax)
  *   SESSION_TTL      (var)    — cookie lifetime in seconds (default 1800)
  *   SESSION_MAX_AGE  (var)    — cap on a renewed session, from its solve (default 86400)
- *   BRIDGE_IPS       (var)    — comma-separated IPs let through without a session (default none)
+ *   BRIDGE_IPS       (var):     comma-separated IPs let through without a session (default none)
  *
  * Any of these that is set but unusable (a non-numeric TTL, an ALLOWED_ORIGIN
  * that isn't a URL) is a 500 "misconfigured", same as a missing secret.
