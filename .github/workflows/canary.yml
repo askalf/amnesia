@@ -23,7 +23,7 @@ permissions:
 jobs:
   deploy-token:
     name: Verify deploy token
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Token is active and not near expiry
@@ -56,7 +56,7 @@ jobs:
 
   live-smoke:
     name: Live site smoke
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: amnesia.tax serves the SPA
@@ -108,7 +108,7 @@ jobs:
     # 9.4), an advisory landing on a dev dependency, a direct push. Fail loudly
     # the day it happens instead of finding out from the badge.
     name: Scorecard has not dropped
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Overall at least 9.5, and no 10 has slipped

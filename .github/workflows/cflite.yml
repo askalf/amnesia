@@ -30,7 +30,7 @@ permissions: read-all
 jobs:
   Fuzzing:
     name: Coverage report (${{ matrix.sanitizer }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
