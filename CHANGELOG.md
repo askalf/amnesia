@@ -20,9 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stop the whole script), validates `?cat=`/`?p=`, leaves Enter to an IME
   mid-composition, and counts only the results it shows.
 - **The API gate's Turnstile binding can't skip itself.** A siteverify
-  success with no hostname, or an `ALLOWED_ORIGIN` that isn't a URL, was
-  accepted. Those, and a non-numeric `SESSION_TTL`/`SESSION_MAX_AGE` (`6h`
-  was read as 6 seconds), are now `500 misconfigured`.
+  success with no hostname was accepted; it is now `403
+  turnstile_hostname_mismatch`, like one for another hostname. An
+  `ALLOWED_ORIGIN` that isn't a URL, or a non-numeric
+  `SESSION_TTL`/`SESSION_MAX_AGE` (`6h` was read as 6 seconds), is now
+  `500 misconfigured`.
 - **Empty answers stay out of the edge cache.** An upstream blip (SearXNG
   answering 200 with no results or no suggestions) was served to everyone
   for the whole TTL.
