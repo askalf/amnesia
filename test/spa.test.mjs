@@ -82,12 +82,17 @@ describe('safeUrl', () => {
     }
   });
 
-  test('relative and empty inputs resolve against the page origin (same-site, never script)', () => {
-    // Real behavior, pinned here so a change to it is deliberate: the base
-    // argument makes relative input land on https://amnesia.tax.
+  test('relative input resolves against the page origin (same-site, never script)', () => {
+    // Pinned so a change to it is deliberate: the base argument makes
+    // relative input land on https://amnesia.tax.
     assert.equal(safeUrl('/path'), 'https://amnesia.tax/path');
-    assert.equal(safeUrl(''), 'https://amnesia.tax/');
-    assert.equal(safeUrl(undefined), 'https://amnesia.tax/undefined');
+  });
+
+  test('a missing value is dropped, not turned into a link to this site', () => {
+    // A result without img_src or url used to render src="/undefined".
+    for (const missing of [undefined, null, '', '   ', 42, {}]) {
+      assert.equal(safeUrl(missing), '', JSON.stringify(missing));
+    }
   });
 });
 
@@ -263,4 +268,337 @@ describe('warmSession', () => {
 test('the page preconnects to the API gate (credentialed, so no crossorigin) and loads Turnstile with the id turnstileReady waits on', () => {
   assert.match(HTML, /<link rel="preconnect" href="https:\/\/api\.amnesia\.tax">/);
   assert.match(HTML, /<script id="ts-loader" src="https:\/\/challenges\.cloudflare\.com\/turnstile\//);
+});
+
+/**
+ * The page's whole inline script, run in a vm context with just enough DOM
+ * for it to boot. History is a real entry stack (push truncates the forward
+ * entries, back/forward fire popstate), fetches stay pending until the test
+ * answers them, and timers only run when the test says so.
+ */
+function pageHarness({ url = '/', storageThrows = false } = {}) {
+  class FakeElement {
+    constructor() {
+      this.listeners = {};
+      this.style = {};
+      this.dataset = {};
+      this.attrs = {};
+      this.innerHTML = '';
+      this.value = '';
+      this.className = '';
+      const classes = new Set();
+      this.classList = {
+        add: (c) => classes.add(c),
+        remove: (c) => classes.delete(c),
+        contains: (c) => classes.has(c),
+        toggle: (c, on = !classes.has(c)) => (on ? classes.add(c) : classes.delete(c)),
+      };
+    }
+    addEventListener(ev, fn) { (this.listeners[ev] ||= []).push(fn); }
+    dispatch(ev, e = {}) { for (const fn of this.listeners[ev] || []) fn(e); }
+    setAttribute(k, v) { this.attrs[k] = String(v); }
+    getAttribute(k) { return this.attrs[k] ?? null; }
+    querySelectorAll() { return []; }
+    appendChild(c) { return c; }
+    focus() { document.activeElement = this; }
+    set textContent(s) { this.innerHTML = String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  }
+
+  const ids = ['q', 'shell', 'subtitle', 'content', 'categoryTabs', 'themeToggle', 'toggleIcon', 'themeColor', 'logo', 'acDropdown'];
+  const el = Object.fromEntries(ids.map((id) => [id, new FakeElement()]));
+  el.shell.className = 'shell landing';
+  const document = {
+    getElementById: (id) => el[id] ?? null,
+    createElement: () => new FakeElement(),
+    addEventListener: () => {},
+    documentElement: new FakeElement(),
+    body: new FakeElement(),
+    activeElement: el.q,
+  };
+
+  const win = new FakeElement();
+  const location = { hostname: 'localhost', origin: 'http://localhost', search: '' };
+  const entries = [url];
+  let at = 0;
+  const sync = () => { location.search = new URL(entries[at], location.origin).search; };
+  sync();
+  const history = {
+    pushState(_s, _t, u) { entries.splice(at + 1); entries.push(u); at++; sync(); },
+    replaceState(_s, _t, u) { entries[at] = u; sync(); },
+    back() { if (at > 0) { at--; sync(); win.dispatch('popstate'); } },
+    forward() { if (at < entries.length - 1) { at++; sync(); win.dispatch('popstate'); } },
+  };
+  Object.assign(win, { location, scrollTo: () => {} });
+
+  const timers = new Map();
+  let timerId = 0;
+  const fetches = [];
+  const storage = () => { if (storageThrows) throw new Error('SecurityError'); return null; };
+
+  const ctx = vm.createContext({
+    window: win, document, location, history, URL, URLSearchParams, AbortController, performance,
+    localStorage: { getItem: storage, setItem: storage },
+    setTimeout: (fn) => { timers.set(++timerId, fn); return timerId; },
+    clearTimeout: (id) => { timers.delete(id); },
+    fetch: (u, opts = {}) => new Promise((resolve, reject) => {
+      const f = { url: u, signal: opts.signal };
+      f.respond = (data) => resolve({ ok: true, status: 200, json: async () => data });
+      opts.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      fetches.push(f);
+    }),
+  });
+  const script = splitBlocks(HTML, 'script').inner.find((s) => s.includes('function doSearch('));
+  vm.runInContext(script, ctx);
+
+  const searches = () => fetches.filter((f) => f.url.startsWith('/search?'));
+  return {
+    el,
+    fetches,
+    searches,
+    history,
+    entries: () => [...entries],
+    index: () => at,
+    /** Answer the pending /search for `query` with one result titled `<query>-result`. */
+    respond: (query) => {
+      const f = searches().find((s) => new URL(s.url, location.origin).searchParams.get('q') === query && !s.done);
+      assert.ok(f, `no pending search for ${query}`);
+      f.done = true;
+      f.respond({ results: [{ url: `https://example.com/${query}`, title: `${query}-result` }] });
+    },
+    type: (text) => { el.q.value = text; el.q.dispatch('input'); },
+    enter: (text) => {
+      if (text !== undefined) el.q.value = text;
+      el.q.dispatch('keydown', { key: 'Enter', keyCode: 13, isComposing: false, preventDefault() {} });
+    },
+    runTimers: () => { for (const [id, fn] of [...timers]) { timers.delete(id); fn(); } },
+  };
+}
+
+const settle = () => new Promise((r) => setImmediate(r));
+
+describe('search history and rendering order', () => {
+  test('a ?q= link searches on load and replaces its entry instead of pushing one', async () => {
+    const h = pageHarness({ url: '/?q=cats' });
+    assert.deepEqual(h.entries(), ['/?q=cats']);
+    assert.equal(h.searches().length, 1);
+    h.respond('cats');
+    await settle();
+    assert.equal(h.el.shell.className, 'shell results-mode');
+    assert.match(h.el.content.innerHTML, /cats-result/);
+  });
+
+  test('a new search pushes one entry', async () => {
+    const h = pageHarness();
+    h.enter('cats');
+    assert.deepEqual(h.entries(), ['/', '/?q=cats']);
+    h.enter('dogs');
+    assert.deepEqual(h.entries(), ['/', '/?q=cats', '/?q=dogs']);
+  });
+
+  test('Back and Forward re-run the search without pushing or losing the forward entry', async () => {
+    const h = pageHarness();
+    h.enter('cats'); h.respond('cats');
+    h.enter('dogs'); h.respond('dogs');
+    await settle();
+    const stack = ['/', '/?q=cats', '/?q=dogs'];
+
+    h.history.back();
+    assert.deepEqual(h.entries(), stack, 'Back pushed an entry or cleared the forward stack');
+    assert.equal(h.index(), 1);
+    assert.equal(h.el.q.value, 'cats');
+    h.respond('cats');
+    await settle();
+    assert.match(h.el.content.innerHTML, /cats-result/);
+
+    h.history.forward();
+    assert.deepEqual(h.entries(), stack, 'Forward pushed an entry');
+    assert.equal(h.index(), 2);
+    h.respond('dogs');
+    await settle();
+    assert.match(h.el.content.innerHTML, /dogs-result/);
+    assert.doesNotMatch(h.el.content.innerHTML, /cats-result/);
+  });
+
+  test('an older search answering after a newer one does not replace it', async () => {
+    const h = pageHarness();
+    h.enter('old');
+    h.enter('new');
+    h.respond('new');
+    await settle();
+    assert.match(h.el.content.innerHTML, /new-result/);
+    h.respond('old');
+    await settle();
+    assert.match(h.el.content.innerHTML, /new-result/);
+    assert.doesNotMatch(h.el.content.innerHTML, /old-result/);
+  });
+
+  test('Back to the landing page while a search is pending keeps the landing page', async () => {
+    const h = pageHarness();
+    h.enter('cats');
+    h.history.back();
+    assert.equal(h.el.shell.className, 'shell landing');
+    h.respond('cats');
+    await settle();
+    assert.equal(h.el.shell.className, 'shell landing');
+    assert.equal(h.el.content.innerHTML, '');
+  });
+
+  test('the logo returns to the landing page even with a search pending', async () => {
+    const h = pageHarness();
+    h.enter('cats');
+    h.el.logo.dispatch('click');
+    assert.deepEqual(h.entries(), ['/', '/?q=cats', '/']);
+    h.respond('cats');
+    await settle();
+    assert.equal(h.el.shell.className, 'shell landing');
+    assert.equal(h.el.content.innerHTML, '');
+  });
+
+  test('Enter cancels a debounced autocomplete before it fetches', async () => {
+    const h = pageHarness();
+    h.type('cats');
+    h.enter();
+    h.runTimers();
+    await settle();
+    assert.ok(!h.fetches.some((f) => f.url.startsWith('/autocompleter')), 'autocomplete fetched after Enter');
+    assert.ok(!h.el.acDropdown.classList.contains('open'));
+  });
+
+  test('Enter aborts an in-flight autocomplete so it cannot reopen over the results', async () => {
+    const h = pageHarness();
+    h.type('cats');
+    h.runTimers();
+    const ac = h.fetches.find((f) => f.url.startsWith('/autocompleter'));
+    assert.ok(ac, 'autocomplete fetched after the debounce');
+    h.enter();
+    assert.equal(ac.signal.aborted, true);
+    ac.respond(['cats', ['cats and dogs']]);
+    await settle();
+    assert.ok(!h.el.acDropdown.classList.contains('open'));
+  });
+
+  test('search still works when storage access throws', async () => {
+    const h = pageHarness({ url: '/?q=cats', storageThrows: true });
+    h.respond('cats');
+    await settle();
+    assert.match(h.el.content.innerHTML, /cats-result/);
+  });
+});
+
+describe('result rendering', () => {
+  /** Load `/?q=<q>[&cat=<cat>]`, answer its search with `results`, return the rendered #content. */
+  async function render(results, cat) {
+    const h = pageHarness({ url: '/?q=cats' + (cat ? '&cat=' + cat : '') });
+    const [f] = h.searches();
+    assert.ok(f, 'the page searched on load');
+    f.respond({ results });
+    await settle();
+    return h.el.content.innerHTML;
+  }
+  const imgSrcs = (html) => [...html.matchAll(/<img src="([^"]*)"/g)].map((m) => m[1]);
+  const shownCount = (html) => Number(/<span>(\d+) results in /.exec(html)?.[1]);
+
+  test('image tiles use thumbnail_src, then thumbnail, then img_src, and count only the tiles drawn', async () => {
+    const html = await render([
+      { url: 'https://a.example/', title: 'a', thumbnail_src: 'https://t.example/a-src.jpg', thumbnail: 'https://t.example/a-thumb.jpg', img_src: 'https://o.example/a.jpg' },
+      { url: 'https://b.example/', title: 'b', thumbnail: 'https://t.example/b-thumb.jpg', img_src: 'https://o.example/b.jpg' },
+      { url: 'https://c.example/', title: 'c', img_src: 'https://o.example/c.jpg' },
+      { url: 'https://d.example/', title: 'duplicate of a', thumbnail_src: 'https://t.example/a-src.jpg' },
+      { url: 'https://e.example/', title: 'rejected', thumbnail_src: 'javascript:alert(1)', img_src: 'https://o.example/e.jpg' },
+      { url: 'https://f.example/', title: 'no image' },
+    ], 'images');
+    assert.deepEqual(imgSrcs(html), [
+      'https://t.example/a-src.jpg',
+      'https://t.example/b-thumb.jpg',
+      'https://o.example/c.jpg',
+    ]);
+    assert.equal(shownCount(html), 3);
+    assert.doesNotMatch(html, /javascript:|o\.example\/(a|b|e)\.jpg|duplicate of a|no image/);
+  });
+
+  test('standard results drop duplicate and rejected URLs and count only what is shown', async () => {
+    const html = await render([
+      { url: 'https://example.com/one', title: 'one' },
+      { url: 'https://example.com/one', title: 'one again' },
+      { url: 'javascript:alert(1)', title: 'script' },
+      { url: 'ftp://example.com/file', title: 'ftp' },
+      { title: 'no url' },
+      { url: 'https://example.com/two', title: 'two' },
+    ]);
+    assert.equal((html.match(/class="result-item"/g) || []).length, 2);
+    assert.equal(shownCount(html), 2);
+    assert.match(html, /href="https:\/\/example\.com\/one"/);
+    assert.match(html, /href="https:\/\/example\.com\/two"/);
+    assert.doesNotMatch(html, /one again|javascript:|ftp:|no url/);
+    assert.doesNotMatch(html, /no-results/);
+  });
+
+  test('standard results that are all rejected show zero and the empty state', async () => {
+    const html = await render([
+      { url: 'javascript:alert(1)', title: 'script' },
+      { title: 'no url' },
+    ]);
+    assert.equal(shownCount(html), 0);
+    assert.match(html, /class="no-results"/);
+  });
+});
+
+describe('input the page normalizes', () => {
+  test('Enter and the arrows during IME composition belong to the IME', async () => {
+    const h = pageHarness();
+    h.type('cats');
+    h.runTimers();
+    h.fetches.find((f) => f.url.startsWith('/autocompleter')).respond(['cats', ['cats one', 'cats two']]);
+    await settle();
+    assert.ok(h.el.acDropdown.classList.contains('open'), 'suggestions open');
+    let prevented = 0;
+    const key = (k, extra) => h.el.q.dispatch('keydown', {
+      key: k, keyCode: k === 'Enter' ? 13 : 40, isComposing: false, preventDefault() { prevented++; }, ...extra,
+    });
+    key('Enter', { isComposing: true });
+    key('Enter', { keyCode: 229 });
+    key('ArrowDown', { isComposing: true });
+    key('ArrowDown', { keyCode: 229 });
+    assert.equal(h.searches().length, 0, 'a composing Enter searched');
+    assert.equal(prevented, 0, 'a composing key lost its default action');
+    // The selection did not move: a plain Enter now searches what was typed, not a suggestion.
+    key('Enter');
+    assert.equal(h.searches().length, 1);
+    assert.equal(new URL(h.searches()[0].url, 'http://localhost').searchParams.get('q'), 'cats');
+  });
+
+  test('a deep link with an unknown category or a bad page searches general, page 1, and rewrites its entry', () => {
+    for (const [url, entry] of [
+      ['/?q=cats&cat=evil&p=-3', '/?q=cats'],
+      ['/?q=cats&cat=images&p=abc', '/?q=cats&cat=images'],
+      ['/?q=cats&cat=news&p=0', '/?q=cats&cat=news'],
+    ]) {
+      const h = pageHarness({ url });
+      const sent = new URL(h.searches()[0].url, 'http://localhost').searchParams;
+      assert.equal(sent.get('categories'), new URL(entry, 'http://localhost').searchParams.get('cat'), url);
+      assert.equal(sent.get('pageno'), null, url);
+      assert.deepEqual(h.entries(), [entry], url);
+    }
+  });
+
+  test('a valid category and page in a deep link are kept', () => {
+    const h = pageHarness({ url: '/?q=cats&cat=videos&p=3' });
+    const sent = new URL(h.searches()[0].url, 'http://localhost').searchParams;
+    assert.equal(sent.get('categories'), 'videos');
+    assert.equal(sent.get('pageno'), '3');
+    assert.deepEqual(h.entries(), ['/?q=cats&cat=videos&p=3']);
+  });
+
+  test('Back or Forward onto an entry with a bad category or page searches general, page 1', () => {
+    const h = pageHarness();
+    h.enter('cats');
+    h.history.pushState(null, '', '/?q=dogs&cat=evil&p=-1');
+    h.history.back();
+    h.history.forward();
+    const last = new URL(h.searches().at(-1).url, 'http://localhost').searchParams;
+    assert.equal(last.get('q'), 'dogs');
+    assert.equal(last.get('categories'), null);
+    assert.equal(last.get('pageno'), null);
+    assert.equal(h.entries()[h.index()], '/?q=dogs');
+  });
 });

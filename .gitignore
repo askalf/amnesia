@@ -16,3 +16,7 @@ deploy/
 # fuzz.yml / fuzz/run.mjs working dirs
 fuzz/corpus/
 fuzz/crashes/
+
+# Python bytecode from running image/ locally
+__pycache__/
+*.pyc

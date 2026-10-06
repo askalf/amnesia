@@ -35,7 +35,8 @@ docker compose -f /root/amnesia/docker-compose.yml ps
 docker exec amnesia-searxng wget -qO- http://127.0.0.1:8080/healthz   # -> OK
 
 # Confirm engine egress is via ProtonVPN (not the host IP):
-docker exec amnesia-searxng sh -c 'curl -s -x http://gluetun:8888 https://ifconfig.me'
+# (busybox wget, the image has no curl; it reads the lowercase proxy variable)
+docker exec amnesia-searxng sh -c 'https_proxy=http://gluetun:8888 wget -qO- -T 5 https://ifconfig.me/ip'
 ```
 
 This is the proxy shape, kept as the rollback path. The live stack runs 1b,
@@ -110,36 +111,43 @@ An engine that keeps timing out at the 3 s ceiling is a candidate for
 `disabled: true` (with a dated reason, like the others) rather than a longer
 timeout: its timeout is every search's deadline.
 
-## 2. DNS — point api.amnesia.tax at the tunnel
+## 2. DNS: both hostnames on the tunnel
+
+`api.amnesia.tax` is the public API, but the API gate Worker's route takes it
+over (`worker/wrangler.toml`); it needs a proxied record only so the route has
+something to bind to. SearXNG itself is reached by the Worker at a second
+hostname, `search-origin.amnesia.tax` (why: [`worker/DEPLOY.md`](../worker/DEPLOY.md)).
 
 ```sh
 # Uses the cloudflared cert, not the scoped API token.
 cloudflared tunnel route dns askalf-platform api.amnesia.tax
+cloudflared tunnel route dns askalf-platform search-origin.amnesia.tax
 ```
 
 ## 3. cloudflared ingress
 
-Add the block from `cloudflared-ingress.snippet.yml` to
-`/etc/cloudflared/config.yml` (above the `http_status:404` catch-all), then:
+Add the block from `cloudflared-ingress.snippet.yml` (the `search-origin`
+hostname → `:8081`) to `/etc/cloudflared/config.yml` (above the
+`http_status:404` catch-all), then:
 
 ```sh
 cloudflared tunnel ingress validate
 systemctl restart cloudflared
-curl -s https://api.amnesia.tax/healthz      # -> OK
 ```
 
-## 4. Cloudflare edge — CORS + hardening (scoped API token)
+## 4. API gate and Cloudflare edge (scoped API token)
 
-On zone **amnesia.tax**:
-
-- **CORS (required).** Transform Rule → *Modify Response Header* on
-  `http.host eq "api.amnesia.tax"`: set
-  `Access-Control-Allow-Origin: https://amnesia.tax`.
+- **API gate Worker.** Deploy it and lock the origin to it, steps 3–4 of
+  [`worker/DEPLOY.md`](../worker/DEPLOY.md): its three secrets, `wrangler
+  deploy`, and the WAF custom rule that blocks `search-origin.amnesia.tax`
+  without the gate's `x-amnesia-gate` header. CORS is the Worker's job (it
+  names `ALLOWED_ORIGIN` on every answer); no Transform Rule is needed, and an
+  old one setting `Access-Control-Allow-Origin` on `api.amnesia.tax` should go.
 - **Rate limit.** WAF → Rate limiting rule on `api.amnesia.tax/search`,
   e.g. 30 req / 10s per IP → Block (this is the primary per-IP throttle;
   it sees the true client IP).
 - **Bot Fight Mode** ON for the zone.
-- Proxy (orange cloud) the `api` record — it is, via the tunnel CNAME.
+- Proxy (orange cloud) both records. They are, via the tunnel CNAMEs.
 
 ## 5. Front-end — Pages domain + deploy
 
@@ -154,9 +162,10 @@ On zone **amnesia.tax**:
 ## 6. Verify end-to-end
 
 ```sh
-curl -sI https://amnesia.tax                      # 200, HTML
-curl -s 'https://api.amnesia.tax/search?q=test&format=json' \
-  -H 'Origin: https://amnesia.tax' -i | grep -i access-control-allow-origin
+curl -sI https://amnesia.tax                                                   # 200, HTML
+curl -s -o /dev/null -w '%{http_code}\n' https://api.amnesia.tax/healthz       # 200 (the Worker)
+curl -s -o /dev/null -w '%{http_code}\n' 'https://api.amnesia.tax/search?q=test&format=json'          # 401: no session
+curl -s -o /dev/null -w '%{http_code}\n' 'https://search-origin.amnesia.tax/search?q=test&format=json' # 403: origin lock
 # then load https://amnesia.tax in a browser and run a query
 ```
 

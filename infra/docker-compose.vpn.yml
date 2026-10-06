@@ -26,8 +26,9 @@
 #   docker compose -f docker-compose.vpn.yml --env-file .env up -d
 #
 # Verify (both halves of the guarantee):
-#   docker exec amnesia-searxng sh -c 'curl -s https://ifconfig.me'     # the VPN exit, with NO proxy flag
-#   docker stop amnesia-gluetun; docker exec amnesia-searxng sh -c 'curl -s -m 5 https://ifconfig.me'   # nothing — no route while the tunnel is down
+#   docker exec amnesia-searxng sh -c 'wget -qO- -T 5 https://ifconfig.me/ip'   # the VPN exit, with NO proxy flag
+#   docker stop amnesia-gluetun; docker exec amnesia-searxng sh -c 'wget -qO- -T 5 https://ifconfig.me/ip; echo "exit $?"'   # an error, no IP: no route while the tunnel is down
+# (The image has busybox wget, not curl: a curl line "passes" by printing nothing.)
 
 services:
   gluetun:
@@ -81,7 +82,8 @@ services:
       gluetun:
         condition: service_healthy
     environment:
-      SEARXNG_SECRET: ${AMNESIA_SEARXNG_SECRET}
+      # :? refuses to start with it unset, rather than signing with "".
+      SEARXNG_SECRET: ${AMNESIA_SEARXNG_SECRET:?set AMNESIA_SEARXNG_SECRET in .env}
       SEARXNG_BASE_URL: https://api.amnesia.tax/
     volumes:
       - ./searxng:/etc/searxng:ro

@@ -28,7 +28,8 @@ services:
       # Loopback-only: the host cloudflared reaches the container here.
       - "127.0.0.1:8081:8080"
     environment:
-      SEARXNG_SECRET: ${AMNESIA_SEARXNG_SECRET}
+      # :? refuses to start with it unset, rather than signing with "".
+      SEARXNG_SECRET: ${AMNESIA_SEARXNG_SECRET:?set AMNESIA_SEARXNG_SECRET in .env}
       SEARXNG_BASE_URL: https://api.amnesia.tax/
       # Egress every engine request through the platform ProtonVPN proxy.
       HTTP_PROXY: http://gluetun:8888

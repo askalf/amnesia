@@ -78,9 +78,9 @@ def _page():
         "script-src 'self' " + scripts,
         "style-src 'self' " + styles,
         "font-src 'self'",
-        # Thumbnails: image_proxy rewrites them to this origin; https: is kept
-        # for parity with the hosted CSP (src/_headers) for any result field
-        # SearXNG does not proxy.
+        # Thumbnails load from each image's own host: SearXNG's JSON output
+        # is never run through image_proxy (that only rewrites its HTML
+        # pages), so https: is needed, as in the hosted CSP (src/_headers).
         "img-src 'self' data: https:",
         "connect-src 'self'",
         "base-uri 'self'",
@@ -105,7 +105,9 @@ def _asset(content_type, *parts):
     return _read(*parts), [
         ("Content-Type", content_type),
         ("X-Content-Type-Options", "nosniff"),
-        ("Cache-Control", "public, max-age=31536000, immutable"),
+        # A day, not immutable: the names carry no content hash, so a changed
+        # og.png or font would otherwise be stale in browsers for a year.
+        ("Cache-Control", "public, max-age=86400"),
     ]
 
 

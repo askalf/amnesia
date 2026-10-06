@@ -963,13 +963,15 @@
 
     function setTheme(theme) {
       document.documentElement.setAttribute('data-theme', theme);
-      localStorage.setItem('amnesia-theme', theme);
+      try { localStorage.setItem('amnesia-theme', theme); } catch (e) {}   // blocked site data
       toggleIcon.innerHTML = theme === 'dark' ? '&#9790;' : '&#9728;';
       themeColorMeta.setAttribute('content', theme === 'dark' ? '#09090f' : '#fafafa');
     }
 
-    const savedTheme = localStorage.getItem('amnesia-theme') || 'light';
-    setTheme(savedTheme);
+    // Storage access can throw when site data is blocked; search must remain usable.
+    let savedTheme = null;
+    try { savedTheme = localStorage.getItem('amnesia-theme'); } catch (e) {}
+    setTheme(savedTheme === 'dark' ? 'dark' : 'light');
 
     themeToggle.addEventListener('click', () => {
       const current = document.documentElement.getAttribute('data-theme');
@@ -990,6 +992,7 @@
     // open. (Callbacks run on user input, long after the const declarations
     // below initialize — no TDZ hazard despite the forward references.)
     q.addEventListener('keydown', (e) => {
+      if (e.isComposing || e.keyCode === 229) return;   // the IME owns Enter and the arrows mid-composition
       const acOpen = acDropdown.classList.contains('open');
       if (acOpen && e.key === 'ArrowDown') { e.preventDefault(); acMove(1); return; }
       if (acOpen && e.key === 'ArrowUp') { e.preventDefault(); acMove(-1); return; }
@@ -1009,6 +1012,7 @@
 
       currentPage = 1;
       currentQuery = '';
+      searchSeq++;   // a search still in flight must not render over the landing page
       history.pushState(null, '', '/');
       q.focus();
     });
@@ -1152,6 +1156,10 @@
     let acAbort = null;
 
     function hideAc() {
+      // Cancel a pending or in-flight fetch too, or it reopens the dropdown
+      // over the results after Enter (the input still holds the query).
+      clearTimeout(acTimer);
+      if (acAbort) { acAbort.abort(); acAbort = null; }
       acDropdown.classList.remove('open');
       acDropdown.innerHTML = '';
       acItems = [];
@@ -1200,6 +1208,7 @@
         data = await res.json();
       } catch (e) { return; }                 // aborted or offline
       if (q.value.trim() !== query) return;   // out-of-order response
+      if (document.activeElement !== q) return;   // focus left while it was in flight
       let list = [];
       if (Array.isArray(data)) list = Array.isArray(data[1]) ? data[1] : data;
       list = list
@@ -1226,23 +1235,34 @@
       doSearch(1);
     });
 
-    q.addEventListener('blur', () => { setTimeout(hideAc, 150); });
+    q.addEventListener('blur', () => { setTimeout(() => { if (document.activeElement !== q) hideAc(); }, 150); });
 
-    async function doSearch(page) {
+    const CATEGORIES = ['general', 'images', 'news', 'videos'];
+    const validCategory = (c) => (CATEGORIES.includes(c) ? c : 'general');
+    const validPage = (p) => Math.max(1, parseInt(p, 10) || 1);
+    let searchSeq = 0;   // only the newest search may render
+
+    // fromHistory: the current history entry already is this search (Back/Forward,
+    // or a ?q= link being loaded), so the entry is replaced, never pushed again.
+    async function doSearch(page, fromHistory) {
       const query = q.value.trim();
       if (!query) return;
 
       hideAc();
       currentQuery = query;
-      currentPage = page || 1;
+      currentPage = validPage(page);
+      const category = currentCategory;
+      const pageNo = currentPage;
+      const seq = ++searchSeq;
       shell.className = 'shell results-mode';
       subtitle.style.display = 'none';
 
       // Update URL with query, category, and page
       const urlParams = new URLSearchParams({ q: query });
-      if (currentCategory !== 'general') urlParams.set('cat', currentCategory);
-      if (currentPage > 1) urlParams.set('p', currentPage);
-      history.pushState(null, '', '/?' + urlParams.toString());
+      if (category !== 'general') urlParams.set('cat', category);
+      if (pageNo > 1) urlParams.set('p', pageNo);
+      if (fromHistory) history.replaceState(null, '', '/?' + urlParams.toString());
+      else history.pushState(null, '', '/?' + urlParams.toString());
 
       content.innerHTML = '<div class="loading"><div class="spinner"></div>searching...</div>';
 
@@ -1250,13 +1270,14 @@
 
       try {
         let path = '/search?q=' + encodeURIComponent(query) + '&format=json';
-        if (currentCategory !== 'general') path += '&categories=' + currentCategory;
-        if (currentPage > 1) path += '&pageno=' + currentPage;
+        if (category !== 'general') path += '&categories=' + encodeURIComponent(category);
+        if (pageNo > 1) path += '&pageno=' + pageNo;
 
         // Uses the session cookie; only solves Turnstile if the cookie is
         // missing/expired (first visit or after ~30min).
         const res = await apiGet(path);
         const data = await res.json().catch(() => null);
+        if (seq !== searchSeq) return;   // a newer search started meanwhile
         // The API gate signals verification problems with an {error} body.
         if (data && data.error) {
           const msg = (data.error === 'turnstile_required' || data.error === 'turnstile_failed')
@@ -1267,76 +1288,77 @@
         if (!res.ok || !data) throw new Error('Search failed (' + res.status + ')');
 
         const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
-        renderResults(data, elapsed);
+        renderResults(data, elapsed, category, pageNo);
       } catch (err) {
+        if (seq !== searchSeq) return;
         content.innerHTML = '<div class="error-msg">' + escapeHtml(err.message) + '</div>';
       }
     }
 
-    function renderResults(data, elapsed) {
+    function renderResults(data, elapsed, category, page) {
       const results = data.results || [];
       const engines = new Set();
       results.forEach(r => (r.engines || [r.engine]).forEach(e => engines.add(e)));
+      const meta = (n) => {
+        let m = '<span>' + n + ' results in ' + elapsed + 's</span>';
+        Array.from(engines).sort().forEach(e => {
+          m += '<span class="engine-tag">' + escapeHtml(e) + '</span>';
+        });
+        return m;
+      };
 
       let html = '';
 
       // Image grid mode
-      if (currentCategory === 'images' && results.length > 0) {
-        html += '<div class="results-area"><div class="results-meta">';
-        html += '<span>' + results.length + ' results in ' + elapsed + 's</span>';
-        Array.from(engines).sort().forEach(e => {
-          html += '<span class="engine-tag">' + escapeHtml(e) + '</span>';
-        });
-        html += '</div></div>';
-
-        html += '<div class="image-grid">';
+      if (category === 'images' && results.length > 0) {
+        let tiles = '';
+        let shown = 0;
         const seen = new Set();
         results.forEach(r => {
-          const imgUrl = safeUrl(r.img_src || r.thumbnail);
-          const linkUrl = safeUrl(r.url);
+          // The thumbnail, not the original: img_src is the full-size file on
+          // its own host, which costs megabytes and shows that host your IP.
+          const imgUrl = safeUrl(r.thumbnail_src || r.thumbnail || r.img_src);
+          const linkUrl = safeUrl(r.url) || imgUrl;
           if (!imgUrl || seen.has(imgUrl)) return;
           seen.add(imgUrl);
-          html += '<div class="image-item"><a href="' + escapeAttr(linkUrl) + '" target="_blank" rel="noopener">';
-          html += '<img src="' + escapeAttr(imgUrl) + '" alt="' + escapeAttr(r.title || '') + '" loading="lazy">';
-          html += '<div class="image-label">' + escapeHtml(truncate(r.title || '', 60)) + '</div>';
-          html += '</a></div>';
+          shown++;
+          tiles += '<div class="image-item"><a href="' + escapeAttr(linkUrl) + '" target="_blank" rel="noopener">';
+          tiles += '<img src="' + escapeAttr(imgUrl) + '" alt="' + escapeAttr(r.title || '') + '" loading="lazy">';
+          tiles += '<div class="image-label">' + escapeHtml(truncate(r.title || '', 60)) + '</div>';
+          tiles += '</a></div>';
         });
-        html += '</div>';
+        html += '<div class="results-area"><div class="results-meta">' + meta(shown) + '</div></div>';
+        html += '<div class="image-grid">' + tiles + '</div>';
       } else {
         // Standard results
-        html += '<div class="results-area">';
-
-        html += '<div class="results-meta">';
-        html += '<span>' + results.length + ' results in ' + elapsed + 's</span>';
-        Array.from(engines).sort().forEach(e => {
-          html += '<span class="engine-tag">' + escapeHtml(e) + '</span>';
-        });
-        html += '</div>';
-
-        if (results.length === 0) {
-          html += '<div class="no-results">nothing here. try again.</div>';
-        }
-
+        let items = '';
+        let shown = 0;
         const seen = new Set();
         results.forEach(r => {
-          if (seen.has(r.url)) return;
-          seen.add(r.url);
-
           const linkUrl = safeUrl(r.url);
-          if (!linkUrl) return;   // drop results with non-http(s) URLs
+          if (!linkUrl) return;   // drop results with no or non-http(s) URLs
+          if (seen.has(linkUrl)) return;
+          seen.add(linkUrl);
+          shown++;
           let domain;
           try { domain = new URL(linkUrl).hostname.replace(/^www\./, ''); } catch { domain = linkUrl; }
-          html += '<div class="result-item"><a href="' + escapeAttr(linkUrl) + '" target="_blank" rel="noopener">';
-          html += '<div class="result-url">' + escapeHtml(domain) + '</div>';
-          html += '<div class="result-title">' + escapeHtml(r.title || r.url) + '</div>';
-          html += '</a>';
-          if (r.content) html += '<div class="result-snippet">' + escapeHtml(truncate(r.content, 280)) + '</div>';
+          items += '<div class="result-item"><a href="' + escapeAttr(linkUrl) + '" target="_blank" rel="noopener">';
+          items += '<div class="result-url">' + escapeHtml(domain) + '</div>';
+          items += '<div class="result-title">' + escapeHtml(r.title || r.url) + '</div>';
+          items += '</a>';
+          if (r.content) items += '<div class="result-snippet">' + escapeHtml(truncate(r.content, 280)) + '</div>';
           if (r.engines && r.engines.length > 1) {
-            html += '<div class="result-engines">' + r.engines.map(escapeHtml).join(' / ') + '</div>';
+            items += '<div class="result-engines">' + r.engines.map(escapeHtml).join(' / ') + '</div>';
           }
-          html += '</div>';
+          items += '</div>';
         });
 
+        html += '<div class="results-area">';
+        html += '<div class="results-meta">' + meta(shown) + '</div>';
+        if (shown === 0) {
+          html += '<div class="no-results">nothing here. try again.</div>';
+        }
+        html += items;
         html += '</div>';
       }
 
@@ -1351,9 +1373,9 @@
 
       // Pagination
       html += '<div class="pagination">';
-      html += '<button data-action="page" data-page="' + (currentPage - 1) + '" ' + (currentPage <= 1 ? 'disabled' : '') + '>&larr; prev</button>';
-      html += '<span class="page-info">page ' + currentPage + '</span>';
-      html += '<button data-action="page" data-page="' + (currentPage + 1) + '" ' + (results.length === 0 ? 'disabled' : '') + '>next &rarr;</button>';
+      html += '<button data-action="page" data-page="' + (page - 1) + '" ' + (page <= 1 ? 'disabled' : '') + '>&larr; prev</button>';
+      html += '<span class="page-info">page ' + page + '</span>';
+      html += '<button data-action="page" data-page="' + (page + 1) + '" ' + (results.length === 0 ? 'disabled' : '') + '>next &rarr;</button>';
       html += '</div>';
 
       html += '<div class="footer">amnesia.tax &mdash; no ads, funded by <a href="https://github.com/sponsors/askalf">sponsors</a> &middot; built by <a href="https://sprayberrylabs.com">sprayberrylabs</a></div>';
@@ -1410,9 +1432,12 @@
 
     // Only allow http/https URLs into an href/src. Result data comes from upstream
     // search engines; a poisoned `javascript:`/`data:` URL would otherwise become a
-    // clickable script link that CSP 'unsafe-inline' does not block. Returns '' for
-    // anything that isn't a parseable absolute http(s) URL.
+    // clickable script link (navigation to a javascript: URL is not something the
+    // script hashes in the CSP are guaranteed to stop). Returns '' for a missing
+    // value and anything that isn't a parseable http(s) URL; protocol-relative
+    // and path-relative input resolves against this page.
     function safeUrl(s) {
+      if (typeof s !== 'string' || !s.trim()) return '';
       try {
         const u = new URL(s, location.origin);
         return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : '';
@@ -1430,12 +1455,13 @@
       const p = new URLSearchParams(location.search);
       if (p.get('q')) {
         q.value = p.get('q');
-        currentCategory = p.get('cat') || 'general';
+        currentCategory = validCategory(p.get('cat'));
         categoryTabs.querySelectorAll('button').forEach(b => {
           b.classList.toggle('active', b.dataset.cat === currentCategory);
         });
-        doSearch(parseInt(p.get('p')) || 1);
+        doSearch(validPage(p.get('p')), true);
       } else {
+        searchSeq++;   // a search still in flight must not render over the landing page
         shell.className = 'shell landing';
         content.innerHTML = '';
         q.value = '';
@@ -1454,14 +1480,11 @@
     const params = new URLSearchParams(location.search);
     if (params.get('q')) {
       q.value = params.get('q');
-      if (params.get('cat')) {
-        currentCategory = params.get('cat');
-        categoryTabs.querySelectorAll('button').forEach(b => {
-          b.classList.toggle('active', b.dataset.cat === currentCategory);
-        });
-      }
-      currentPage = parseInt(params.get('p')) || 1;
-      doSearch(currentPage);
+      currentCategory = validCategory(params.get('cat'));
+      categoryTabs.querySelectorAll('button').forEach(b => {
+        b.classList.toggle('active', b.dataset.cat === currentCategory);
+      });
+      doSearch(validPage(params.get('p')), true);
     }
   </script>
 </body>

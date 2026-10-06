@@ -106,16 +106,6 @@ outgoing:
   # never from `outgoing`, so the old global `true` did nothing.)
   retries: 0
 
-favicons:
-  cfg_schema: 1
-  cache:
-    db_url: "/var/cache/searxng/faviconcache.db"
-    LIMIT_TOTAL_BYTES: 52428800
-    HOLD_TIME: 5184000
-    BLOB_MAX_BYTES: 40960
-  proxy:
-    max_age: 5184000
-
 engines:
   # ============================================
   # GENERAL — reliable through a VPN exit IP
@@ -186,10 +176,6 @@ engines:
   - name: google images
     disabled: true
   - name: google videos
-    disabled: true
-  - name: google cse
-    disabled: true
-  - name: google cse images
     disabled: true
   - name: qwant news
     disabled: true
@@ -390,3 +376,21 @@ engines:
   # ============================================
   - name: openstreetmap
     disabled: false
+
+  # ---- the rest of upstream's on-by-default engines with a default over 3 s ----
+  # (files, translation, dictionary, weather): pinned so none of them sets the
+  # deadline of the searches they join.
+  - name: kickass
+    timeout: 3.0     # upstream default is 4.0 s
+
+  - name: solidtorrents
+    timeout: 3.0     # upstream default is 4.0 s
+
+  - name: mymemory translated
+    timeout: 3.0     # upstream default is 5.0 s
+
+  - name: wordnik
+    timeout: 3.0     # upstream default is 5.0 s
+
+  - name: wttr.in
+    timeout: 3.0     # upstream default is 9.0 s

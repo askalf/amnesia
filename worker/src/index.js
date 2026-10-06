@@ -25,8 +25,15 @@
  * query plus the sorted remaining params (category, page, format, ...), so
  * the key carries the QUERY only — never a cookie, token, or IP. Lookup
  * happens AFTER auth — the cache saves the origin trip, not the gate.
- * Clients still get no-store; the edge copy is ours alone. No new privacy
- * exposure: Cloudflare already terminates TLS on every request.
+ * Clients still get no-store; the edge copy is ours alone. Only answers with
+ * something in them are stored (an origin 200 with no results or no
+ * suggestions is usually an upstream blip, not an answer worth 6 hours), and
+ * the stored copy carries the normalized query, not the first asker's spelling.
+ *
+ * What the cache does expose: it is shared by everyone in a colo, so a hit is
+ * faster than a miss, and a session holder who times a query learns whether
+ * someone there asked it inside the TTL. docs/privacy-model.md says so. The
+ * x-amnesia-cache header, which would say it outright, goes to BRIDGE_IPS only.
  *
  * Auth precedence: valid session cookie → allow (no Turnstile). Else a valid
  * `cf-turnstile-token` → allow AND (re)issue the cookie. Else 401.
@@ -50,6 +57,10 @@
  *   ALLOWED_ORIGIN   (var)    — SPA origin allowed for CORS (https://amnesia.tax)
  *   SESSION_TTL      (var)    — cookie lifetime in seconds (default 1800)
  *   SESSION_MAX_AGE  (var)    — cap on a renewed session, from its solve (default 86400)
+ *   BRIDGE_IPS       (var):     comma-separated IPs let through without a session (default none)
+ *
+ * Any of these that is set but unusable (a non-numeric TTL, an ALLOWED_ORIGIN
+ * that isn't a URL) is a 500 "misconfigured", same as a missing secret.
  */
 
 const SITEVERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
@@ -61,13 +72,18 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const allowedOrigin = env.ALLOWED_ORIGIN || "https://amnesia.tax";
-    const ttl = parseInt(env.SESSION_TTL || "1800", 10);
-    const maxAge = parseInt(env.SESSION_MAX_AGE || "86400", 10);
+    const ttl = seconds(env.SESSION_TTL, 1800);
+    const maxAge = seconds(env.SESSION_MAX_AGE, 86400);
+    // The hostname a Turnstile token must have been solved on.
+    let expectedHost = "";
+    try { expectedHost = new URL(allowedOrigin).hostname; } catch (e) {}
 
     // Fail closed if signing/verification secrets are missing. Without
     // SESSION_SECRET, hmac() would sign cookies with an empty key — forgeable by
     // anyone who can read this (public) source. Never silently degrade auth.
-    if (!env.SESSION_SECRET || !env.TURNSTILE_SECRET) {
+    // A garbled TTL ("6h" read as 6 s) or an origin with no hostname to bind
+    // tokens to is the same mistake: refuse rather than half-work.
+    if (!env.SESSION_SECRET || !env.TURNSTILE_SECRET || !ttl || !maxAge || !expectedHost) {
       return json({ error: "misconfigured" }, 500, {
         "access-control-allow-origin": allowedOrigin,
         vary: "Origin",
@@ -116,7 +132,8 @@ export default {
     // not a secret), scoped to the operator's own infra; empty = bypass disabled.
     const clientIp = request.headers.get("cf-connecting-ip");
     const bridgeIps = (env.BRIDGE_IPS || "").split(",").map((s) => s.trim()).filter(Boolean);
-    if (clientIp && bridgeIps.includes(clientIp)) {
+    const isBridge = Boolean(clientIp && bridgeIps.includes(clientIp));
+    if (isBridge) {
       authorized = true;
     }
 
@@ -143,10 +160,9 @@ export default {
         return json({ error: "turnstile_failed", codes: outcome["error-codes"] || [] }, 403, cors());
       }
       // Bind the token to our own site: reject tokens minted for any other
-      // hostname (a stolen sitekey solved on an attacker's page won't match).
-      let expectedHost = "";
-      try { expectedHost = new URL(allowedOrigin).hostname; } catch (e) {}
-      if (expectedHost && outcome.hostname && outcome.hostname !== expectedHost) {
+      // hostname (a stolen sitekey solved on an attacker's page won't match),
+      // and a success that doesn't say where it was solved.
+      if (outcome.hostname !== expectedHost) {
         return json({ error: "turnstile_hostname_mismatch" }, 403, cors());
       }
       authorized = true;
@@ -178,9 +194,10 @@ export default {
     const isAc = url.pathname === "/autocompleter";
     const cacheTtl = isAc ? AC_CACHE_TTL : SEARCH_CACHE_TTL;
     let edgeCacheKey = null;
+    const normalizedQ = (url.searchParams.get("q") || "").trim().toLowerCase();
     if (isAc || url.pathname === "/search") {
       const keyParams = new URLSearchParams(url.searchParams);
-      keyParams.set("q", (keyParams.get("q") || "").trim().toLowerCase());
+      keyParams.set("q", normalizedQ);
       keyParams.sort();
       edgeCacheKey = new Request(
         originBase.replace(/\/$/, "") + url.pathname + "?" + keyParams.toString()
@@ -192,7 +209,7 @@ export default {
           headers: cors({
             "content-type": hit.headers.get("content-type") || "application/json",
             "cache-control": "no-store",
-            "x-amnesia-cache": "hit",
+            ...(isBridge ? { "x-amnesia-cache": "hit" } : {}),
             ...setCookie,
           }),
         });
@@ -220,25 +237,67 @@ export default {
     // Store good answers at the edge; the client copy stays no-store. The
     // stored copy's cache-control is what governs edge retention (per-path TTL).
     if (edgeCacheKey && originResp.status === 200) {
-      const [clientBody, cacheBody] = originResp.body.tee();
-      ctx.waitUntil(
-        caches.default.put(
-          edgeCacheKey,
-          new Response(cacheBody, {
-            status: 200,
-            headers: {
-              "content-type": originResp.headers.get("content-type") || "application/json",
-              "cache-control": "public, max-age=" + cacheTtl,
-            },
-          })
-        )
-      );
-      return new Response(clientBody, { status: 200, headers: respHeaders });
+      // fetch() resolves once the headers arrive, so a body that breaks after
+      // them fails here, past the catch above.
+      let text;
+      try {
+        text = await originResp.text();
+      } catch (e) {
+        return json({ error: "origin_unreachable" }, 502, cors());
+      }
+      const stored = cacheable(text, isAc, normalizedQ);
+      if (stored !== null) {
+        ctx.waitUntil(
+          caches.default.put(
+            edgeCacheKey,
+            new Response(stored, {
+              status: 200,
+              headers: {
+                "content-type": originResp.headers.get("content-type") || "application/json",
+                "cache-control": "public, max-age=" + cacheTtl,
+              },
+            })
+          )
+        );
+      }
+      return new Response(text, { status: 200, headers: respHeaders });
     }
 
     return new Response(originResp.body, { status: originResp.status, headers: respHeaders });
   },
 };
+
+// A positive whole number of seconds from a var, the fallback when unset, or
+// 0 (→ misconfigured) for anything else: parseInt("6h") is 6, not 21600.
+function seconds(value, fallback) {
+  if (value === undefined || value === "") return fallback;
+  return /^\d+$/.test(String(value).trim()) ? parseInt(value, 10) : 0;
+}
+
+// The body to keep at the edge for an origin 200, or null to keep nothing.
+// Empty answers aren't kept: SearXNG answers 200 with [] when its
+// autocomplete backend fails and with no results when every engine timed
+// out, and either would otherwise be served to everyone for the whole TTL.
+// The kept copy echoes the normalized query, so a hit never hands one user
+// another's exact spelling of it.
+export function cacheable(text, isAc, normalizedQ) {
+  let data;
+  try { data = JSON.parse(text); } catch (e) { return null; }
+  if (isAc) {
+    // OpenSearch form [query, [suggestions]], or a bare list.
+    if (!Array.isArray(data)) return null;
+    if (Array.isArray(data[1])) {
+      if (!data[1].length) return null;
+      data[0] = normalizedQ;
+    } else if (!data.length) {
+      return null;
+    }
+  } else {
+    if (!data || !Array.isArray(data.results) || !data.results.length) return null;
+    if ("query" in data) data.query = normalizedQ;
+  }
+  return JSON.stringify(data);
+}
 
 // ---- Turnstile siteverify -----------------------------------------------
 async function siteverify(token, secret, ip) {
@@ -260,8 +319,7 @@ async function siteverify(token, secret, ip) {
 
 // ---- Signed session cookie (HMAC-SHA256 over start and expiry) ----------
 // Value: `start.exp.sig`, sig = HMAC(`start.exp`); start is the Turnstile
-// solve's time. Cookies from before renewal are `exp.sig`: they still verify
-// until they expire, and are not renewed.
+// solve's time.
 // The cookie helpers below are exported for the fuzz targets in /fuzz — the
 // cookie value is client-controlled input guarding auth, so its
 // forgery-resistance contract is machine-checked there. Named exports beside
@@ -292,23 +350,20 @@ export async function verifySession(value, secret) {
   if (dot < 0) return false;
   const payload = value.slice(0, dot);
   const sig = value.slice(dot + 1);
-  if (!/^(\d+\.)?\d+$/.test(payload)) return false;
+  if (!/^\d+\.\d+$/.test(payload)) return false;
   const expNum = parseInt(payload.slice(payload.lastIndexOf(".") + 1), 10);
   if (!expNum || expNum < Math.floor(Date.now() / 1000)) return false; // expired
   const expected = await hmac(secret, payload);
   return timingSafeEqual(sig, expected);
 }
 
-// Only called on a value verifySession accepted. start is null for a cookie
-// from before renewal.
+// Only called on a value verifySession accepted.
 export function sessionTimes(value) {
   const parts = value.split(".");
-  if (parts.length === 2) return { start: null, exp: parseInt(parts[0], 10) };
   return { start: parseInt(parts[0], 10), exp: parseInt(parts[1], 10) };
 }
 
 export function needsRenewal(start, exp, ttl, maxAge) {
-  if (start === null) return false;
   const now = Math.floor(Date.now() / 1000);
   return exp - now < ttl / 2 && exp < start + maxAge;
 }

@@ -53,19 +53,22 @@ for Workers Scripts:Edit + Turnstile:Edit + Workers Routes:Edit + DNS:Edit).
    ```sh
    cd worker
    wrangler secret put TURNSTILE_SECRET   # paste the Turnstile secret key
+   wrangler secret put SESSION_SECRET     # HMAC key for the session cookie (openssl rand -hex 32)
    wrangler secret put ORIGIN_SECRET      # any long random string (openssl rand -hex 24)
    wrangler deploy
    ```
-   The route in `wrangler.toml` binds `api.amnesia.tax/*` to the Worker.
+   The route in `wrangler.toml` binds `api.amnesia.tax/*` to the Worker. The
+   Worker answers every route, `/healthz` included, with 500 `misconfigured`
+   until both `TURNSTILE_SECRET` and `SESSION_SECRET` are set.
 
 4. **Lock the origin hostname to the Worker.** So nobody bypasses Turnstile by
    calling `search-origin.amnesia.tax` directly, add a WAF custom rule:
    `(http.host eq "search-origin.amnesia.tax" and not http.request.headers["x-amnesia-gate"][0] eq "<ORIGIN_SECRET>")` → **Block**.
    (Or a mTLS/Access service-token; the shared header is the simplest.)
 
-5. **Front-end.** `src/amnesia-search.html` already loads the Turnstile script and
-   sends the token (see the patch in this PR). Set the **site key** placeholder
-   `__TURNSTILE_SITE_KEY__` to your real site key, then redeploy Pages
+5. **Front-end.** `src/amnesia-search.html` loads the Turnstile script and sends
+   the token. Its site key is the `TURNSTILE_SITE_KEY` constant in the page script; for
+   your own widget, replace it with your site key, then redeploy Pages
    (`wrangler pages deploy …`, see ../infra/DEPLOY.md step 5).
 
 ## Verify

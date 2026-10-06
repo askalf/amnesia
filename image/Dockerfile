@@ -1,7 +1,7 @@
 # amnesia, self-hosted: the amnesia.tax front end and SearXNG with amnesia's
 # tuning, one container, one origin.
 #
-#   docker run -d --name amnesia -p 8080:8080 ghcr.io/askalf/amnesia
+#   docker run -d --name amnesia -p 127.0.0.1:8080:8080 ghcr.io/askalf/amnesia
 #
 # Build from the repository root:  docker build -f image/Dockerfile .
 #
@@ -31,8 +31,9 @@ COPY src/amnesia-search.html /usr/local/amnesia/site/index.html
 COPY src/og.png /usr/local/amnesia/site/og.png
 COPY src/fonts/space-mono-400.woff2 src/fonts/space-mono-700.woff2 /usr/local/amnesia/site/fonts/
 
-# The base image runs as root; nothing here needs to.
-USER searxng
+# The base image runs as root; nothing here needs to. Numeric (the base's
+# searxng user), so runtimes that enforce runAsNonRoot can verify it.
+USER 977:977
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
   CMD wget -q --spider http://127.0.0.1:8080/healthz || exit 1

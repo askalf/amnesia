@@ -10,6 +10,7 @@
 //     start + maxAge, whatever start the fuzzer picks;
 //   - timingSafeEqual never throws and only returns true for equal strings;
 //   - readCookie never throws parsing a hostile Cookie header.
+import { createHmac } from 'node:crypto';
 import {
   buildCookie,
   verifySession,
@@ -22,13 +23,26 @@ import {
 const SECRET = 'fuzz-session-secret';
 const OTHER = 'a-different-secret';
 
+// Independent oracle (node:crypto, not the Worker's WebCrypto path): is `s`
+// exactly a cookie value SECRET signed, and not yet expired? Anything the
+// Worker accepts beyond this is a forgery, however the check got loosened.
+function genuinelySigned(s) {
+  const m = /^(\d+\.(\d+))\.([0-9a-f]{64})$/.exec(s);
+  if (!m) return false;
+  if (Number(m[2]) < Math.floor(Date.now() / 1000)) return false;
+  return createHmac('sha256', SECRET).update(m[1]).digest('hex') === m[3];
+}
+
 export async function fuzz(data) {
   const s = data.toString('utf8');
 
-  // Arbitrary cookie value must never throw and never verify under the wrong
-  // secret. (An attacker submits arbitrary bytes as the cookie.)
+  // Arbitrary cookie value must never throw, never verify unless SECRET
+  // really signed it, and never verify under another secret. (An attacker
+  // submits arbitrary bytes as the cookie.)
   const v1 = await verifySession(s, SECRET);
   if (typeof v1 !== 'boolean') throw new Error('verifySession returned a non-boolean');
+  if (v1 && !genuinelySigned(s)) throw new Error('verifySession accepted a value SECRET never signed');
+  if (await verifySession(s, OTHER)) throw new Error('an arbitrary value verified under an unrelated secret');
 
   // A genuinely-signed, unexpired cookie MUST verify under its secret and MUST
   // NOT verify under a different one. ttl derived from the input, floored to a
@@ -44,8 +58,10 @@ export async function fuzz(data) {
   }
 
   // Splicing the fuzz bytes onto the real signature must not forge a pass.
+  // (Unless the fuzz bytes ARE the real payload: then the result is the
+  // genuine cookie, and accepting it is right.)
   const dot = value.lastIndexOf('.');
-  if (dot > 0) {
+  if (dot > 0 && s !== value.slice(0, dot)) {
     const forged = s + value.slice(dot); // attacker-chosen expiry + real sig
     if (await verifySession(forged, SECRET)) {
       throw new Error('spliced-expiry cookie forged a valid session');
