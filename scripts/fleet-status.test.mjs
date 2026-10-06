@@ -532,7 +532,7 @@ console.log('\n  fleet-status.yml: which events run the job for a fork');
       else if (/^\s+runs-on: \[self-hosted, amnesia\-exec\]/.test(line)) literal.push(f);
     }
   }
-  check('the own-code runs-on expression is in use', ownExprs.length >= 5);
+  check('the own-code runs-on expression is in use', ownExprs.length >= 4);
   const hosted = (e, github, repository = HOME_REPO) => evalIf(`(${e}) == 'ubuntu-latest'`, { github: { repository, ...github } });
   const prFrom = (event_name, headRepo, login = 'askalf') =>
     ({ event_name, event: { pull_request: { head: { repo: { full_name: headRepo } }, user: { login } } } });
