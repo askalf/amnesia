@@ -968,8 +968,7 @@
       themeColorMeta.setAttribute('content', theme === 'dark' ? '#09090f' : '#fafafa');
     }
 
-    // Reading storage throws when site data is blocked; without the guard that
-    // one throw stopped the whole script, search included.
+    // Storage access can throw when site data is blocked; search must remain usable.
     let savedTheme = null;
     try { savedTheme = localStorage.getItem('amnesia-theme'); } catch (e) {}
     setTheme(savedTheme === 'dark' ? 'dark' : 'light');
