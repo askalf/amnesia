@@ -15,12 +15,11 @@ concurrency:
 
 jobs:
   validate:
-    # GitHub-hosted, NOT self-hosted: this job runs on pull_request, including
-    # from forks (public repo). Running untrusted fork code on the self-hosted
-    # runner — which lives on the production box — is a remote code-exec path.
-    # Keep PR-triggered CI on ephemeral GH runners; only the deploy workflows
-    # (push to main, no fork exposure) use the self-hosted runner.
-    runs-on: ubuntu-latest
+    # Our own code (pushes, same-repo PRs, schedules, dispatches) runs on amnesia-exec, the
+    # non-root one-job runners on our host (platform deploy/gha-runners), so GitHub's hosted
+    # queue going down does not hold our PRs. A fork's PR and a Dependabot PR run code nobody
+    # here wrote, so they stay on GitHub's runners.
+    runs-on: ${{ github.event.pull_request && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') && 'ubuntu-latest' || fromJSON('["self-hosted","amnesia-exec"]') }}
     # The job name is the branch ruleset's required status check. Renaming it
     # leaves every open PR waiting on a check that never reports.
     name: Validate HTML and Scripts
@@ -68,7 +67,7 @@ jobs:
     # the top of a workflow, a dangerous trigger, a committed binary. This job
     # scores the PR's own tree and fails on anything below 10.
     name: Scorecard (file-based checks)
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event.pull_request && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') && 'ubuntu-latest' || fromJSON('["self-hosted","amnesia-exec"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
