@@ -542,3 +542,63 @@ describe('result rendering', () => {
     assert.match(html, /class="no-results"/);
   });
 });
+
+describe('input the page normalizes', () => {
+  test('Enter and the arrows during IME composition belong to the IME', async () => {
+    const h = pageHarness();
+    h.type('cats');
+    h.runTimers();
+    h.fetches.find((f) => f.url.startsWith('/autocompleter')).respond(['cats', ['cats one', 'cats two']]);
+    await settle();
+    assert.ok(h.el.acDropdown.classList.contains('open'), 'suggestions open');
+    let prevented = 0;
+    const key = (k, extra) => h.el.q.dispatch('keydown', {
+      key: k, keyCode: k === 'Enter' ? 13 : 40, isComposing: false, preventDefault() { prevented++; }, ...extra,
+    });
+    key('Enter', { isComposing: true });
+    key('Enter', { keyCode: 229 });
+    key('ArrowDown', { isComposing: true });
+    key('ArrowDown', { keyCode: 229 });
+    assert.equal(h.searches().length, 0, 'a composing Enter searched');
+    assert.equal(prevented, 0, 'a composing key lost its default action');
+    // The selection did not move: a plain Enter now searches what was typed, not a suggestion.
+    key('Enter');
+    assert.equal(h.searches().length, 1);
+    assert.equal(new URL(h.searches()[0].url, 'http://localhost').searchParams.get('q'), 'cats');
+  });
+
+  test('a deep link with an unknown category or a bad page searches general, page 1, and rewrites its entry', () => {
+    for (const [url, entry] of [
+      ['/?q=cats&cat=evil&p=-3', '/?q=cats'],
+      ['/?q=cats&cat=images&p=abc', '/?q=cats&cat=images'],
+      ['/?q=cats&cat=news&p=0', '/?q=cats&cat=news'],
+    ]) {
+      const h = pageHarness({ url });
+      const sent = new URL(h.searches()[0].url, 'http://localhost').searchParams;
+      assert.equal(sent.get('categories'), new URL(entry, 'http://localhost').searchParams.get('cat'), url);
+      assert.equal(sent.get('pageno'), null, url);
+      assert.deepEqual(h.entries(), [entry], url);
+    }
+  });
+
+  test('a valid category and page in a deep link are kept', () => {
+    const h = pageHarness({ url: '/?q=cats&cat=videos&p=3' });
+    const sent = new URL(h.searches()[0].url, 'http://localhost').searchParams;
+    assert.equal(sent.get('categories'), 'videos');
+    assert.equal(sent.get('pageno'), '3');
+    assert.deepEqual(h.entries(), ['/?q=cats&cat=videos&p=3']);
+  });
+
+  test('Back or Forward onto an entry with a bad category or page searches general, page 1', () => {
+    const h = pageHarness();
+    h.enter('cats');
+    h.history.pushState(null, '', '/?q=dogs&cat=evil&p=-1');
+    h.history.back();
+    h.history.forward();
+    const last = new URL(h.searches().at(-1).url, 'http://localhost').searchParams;
+    assert.equal(last.get('q'), 'dogs');
+    assert.equal(last.get('categories'), null);
+    assert.equal(last.get('pageno'), null);
+    assert.equal(h.entries()[h.index()], '/?q=dogs');
+  });
+});
