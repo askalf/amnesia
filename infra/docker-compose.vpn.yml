@@ -33,7 +33,7 @@
 services:
   gluetun:
     # Same digest the platform's gluetun runs (v3.40.0).
-    image: qmcgaw/gluetun@sha256:2b42bfa046757145a5155acece417b65b4443c8033fb88661a8e9dcf7fda5a00
+    image: qmcgaw/gluetun@sha256:2733bb22b27e3efa7a9f2cef9057ec12791b8b225793fcd3dbfd0508404dfc25
     container_name: ${AMNESIA_NAME_PREFIX:-amnesia}-gluetun
     hostname: gluetun
     cap_add:
