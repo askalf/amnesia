@@ -22,7 +22,9 @@ cp src/sitemap.xml deploy/sitemap.xml 2>/dev/null || true
 # file Pages answers that URL with the HTML page (the SPA fallback), so
 # "add amnesia to your browser" fails with no visible error.
 cp src/opensearch.xml deploy/opensearch.xml
-cp src/_headers deploy/_headers 2>/dev/null || true
+# Required too: _headers carries the CSP and HSTS, and a site deployed
+# without it ships with neither and says nothing.
+cp src/_headers deploy/_headers
 cp -r src/fonts deploy/fonts
 echo "build-site: deploy/ holds $(find deploy -type f | wc -l) file(s):"
 find deploy -type f | sort

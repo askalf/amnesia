@@ -24,8 +24,11 @@
 #
 # Engines permanently broken for everyone (ask, yep, mwmbl, wiby) and
 # presearch (its two-step flow ignores the engine timeout and pins every
-# search at ~5 s when it stalls) stay off. Weights and timeouts are the
-# hosted instance's, unchanged.
+# search at ~5 s when it stalls) stay off. Weights are the hosted instance's.
+# Timeouts are too: every engine shares the 3 s request_timeout, and the few
+# whose upstream default is longer are pinned to it, because a search waits
+# for its slowest engine. That includes the engines enabled only here: from a
+# home IP google, startpage and the rest answer inside 3 s or not usefully.
 
 use_default_settings:
   engines:
@@ -58,7 +61,10 @@ server:
   secret_key: "ultrasecretkey"   # replaced by SEARXNG_SECRET — see the header
   limiter: false
   public_instance: false
-  image_proxy: true              # result thumbnails load via this origin, not from the engines
+  # Proxies thumbnails in SearXNG's own HTML pages. It does not touch the JSON
+  # the amnesia page reads (webutils.get_json_response never proxifies), so
+  # thumbnails there still load from each image's host.
+  image_proxy: true
   method: "GET"
   http_protocol_version: "1.1"
   default_http_headers:
@@ -74,63 +80,55 @@ ui:
   infinite_scroll: false
 
 outgoing:
-  request_timeout: 4.0
-  max_request_timeout: 8.0
+  request_timeout: 3.0
+  max_request_timeout: 5.0     # caps ?timeout_limit= from a client
   useragent_suffix: ""
   pool_connections: 100
   pool_maxsize: 50
   keepalive_expiry: 30.0
   enable_http2: true
-  retries: 1
-  retry_on_http_error: true
+  # No retries: a retry runs inside the same deadline. (`retry_on_http_error`
+  # is only read per engine, never from `outgoing`.)
+  retries: 0
 
 engines:
   # ---- GENERAL ----
   - name: brave
     disabled: false
     weight: 3.0
-    timeout: 6.0
 
   - name: bing
     disabled: false
     weight: 2.5
-    timeout: 6.0
 
   - name: duckduckgo
     disabled: false
     weight: 2.5
-    timeout: 6.0
 
   - name: google
     disabled: false
     weight: 0.5
-    timeout: 5.0
     use_mobile_ui: true
 
   - name: startpage
     disabled: false
     weight: 2.0
-    timeout: 8.0
 
   - name: qwant
     disabled: false
     weight: 0.5
-    timeout: 6.0
 
   - name: yahoo
     disabled: false
     weight: 1.5
-    timeout: 6.0
 
   - name: mojeek
     disabled: false
     weight: 0.5
-    timeout: 6.0
 
   - name: yandex
     disabled: false
     weight: 1.0
-    timeout: 6.0
 
   - name: crowdview
     disabled: false
@@ -165,7 +163,7 @@ engines:
 
   - name: wolframalpha
     disabled: false
-    timeout: 8.0
+    timeout: 3.0     # upstream default is 6.0 s
 
   - name: currency
     disabled: false
@@ -177,27 +175,22 @@ engines:
   - name: brave.news
     disabled: false
     weight: 2.5
-    timeout: 6.0
 
   - name: bing news
     disabled: false
     weight: 2.0
-    timeout: 6.0
 
   - name: google news
     disabled: false
     weight: 0.5
-    timeout: 6.0
 
   - name: duckduckgo news
     disabled: false
     weight: 1.5
-    timeout: 6.0
 
   - name: yahoo news
     disabled: false
     weight: 1.0
-    timeout: 6.0
 
   - name: wikinews
     disabled: false
@@ -213,10 +206,10 @@ engines:
   - name: stackoverflow
     disabled: false
     weight: 2.0
-    timeout: 6.0
 
   - name: npm
     disabled: false
+    timeout: 3.0     # upstream default is 5.0 s; would set the IT-search deadline
 
   - name: pypi
     disabled: false
@@ -226,6 +219,7 @@ engines:
 
   - name: crates.io
     disabled: false
+    timeout: 3.0     # upstream default is 6.0 s; would set the IT-search deadline
 
   - name: hackernews
     disabled: false
@@ -233,6 +227,7 @@ engines:
 
   - name: lobste.rs
     disabled: false
+    timeout: 3.0     # upstream default is 5.0 s; would set the IT-search deadline
 
   - name: mdn
     disabled: false
@@ -256,7 +251,6 @@ engines:
   - name: google scholar
     disabled: false
     weight: 1.0
-    timeout: 8.0
 
   - name: pubmed
     disabled: false
@@ -265,7 +259,6 @@ engines:
   - name: reddit
     disabled: false
     weight: 1.5
-    timeout: 6.0
 
   - name: mastodon hashtags
     disabled: false
@@ -280,29 +273,23 @@ engines:
   - name: brave.images
     disabled: false
     weight: 2.0
-    timeout: 6.0
 
   - name: bing images
     disabled: false
-    timeout: 6.0
 
   - name: duckduckgo images
     disabled: false
-    timeout: 6.0
 
   - name: unsplash
     disabled: false
-    timeout: 6.0
 
   # ---- VIDEOS ----
   - name: brave.videos
     disabled: false
     weight: 2.0
-    timeout: 6.0
 
   - name: youtube
     disabled: false
-    timeout: 6.0
 
   - name: odysee
     disabled: false
@@ -310,3 +297,34 @@ engines:
   # ---- MAPS ----
   - name: openstreetmap
     disabled: false
+
+  # ---- upstream defaults longer than 3 s (on by default; pinned as hosted) ----
+  - name: gentoo
+    timeout: 3.0     # upstream default is 10 s; would set the IT-search deadline
+
+  - name: openairedatasets
+    timeout: 3.0     # upstream default is 5.0 s; would set the science-search deadline
+
+  - name: openairepublications
+    timeout: 3.0     # upstream default is 5.0 s; would set the science-search deadline
+
+  - name: artic
+    timeout: 3.0     # upstream default is 4.0 s; would set the image-search deadline
+
+  # ---- the rest of upstream's on-by-default engines with a default over 3 s ----
+  # (files, translation, dictionary, weather): pinned so none of them sets the
+  # deadline of the searches they join.
+  - name: kickass
+    timeout: 3.0     # upstream default is 4.0 s
+
+  - name: solidtorrents
+    timeout: 3.0     # upstream default is 4.0 s
+
+  - name: mymemory translated
+    timeout: 3.0     # upstream default is 5.0 s
+
+  - name: wordnik
+    timeout: 3.0     # upstream default is 5.0 s
+
+  - name: wttr.in
+    timeout: 3.0     # upstream default is 9.0 s

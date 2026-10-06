@@ -12,6 +12,18 @@ on:
   schedule:
     - cron: '37 6 * * 1' # weekly, Monday 06:37 UTC (staggered off the :00 grid)
   workflow_dispatch:
+  # Build only, on PRs that change what the build consumes: the digest-pinned
+  # base image (Dependabot bumps it weekly), build.sh, the fuzz targets, the
+  # npm manifests and the .dockerignore whitelist. A PR that breaks the fuzz
+  # build fails here instead of on the weekly scheduled run.
+  pull_request:
+    paths:
+      - '.clusterfuzzlite/**'
+      - '.dockerignore'
+      - 'fuzz/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/cflite.yml'
 
 permissions: read-all
 
@@ -35,6 +47,7 @@ jobs:
           sanitizer: ${{ matrix.sanitizer }}
       - name: Run fuzzers (${{ matrix.sanitizer }})
         id: run
+        if: github.event_name != 'pull_request'
         uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

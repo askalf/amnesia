@@ -10,7 +10,9 @@
 //          Turnstile warm-up (GET /session) when the site has an API gate
 //   warm   reload in the same profile: HTTP cache and open connections
 //   search type a query and press Enter; time to the /search response and to
-//          rendered results. The x-amnesia-cache header says edge hit or miss.
+//          rendered results. The x-amnesia-cache header says edge hit or miss;
+//          the gate sends it to BRIDGE_IPS only, so elsewhere a hit shows as
+//          a miss and the repeat row's timing is the tell.
 //   repeat the same query again, which the Worker's edge cache should answer
 //
 // Turnstile is invisible but can refuse a headless browser; the search rows

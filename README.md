@@ -19,7 +19,7 @@
   <a href="https://github.com/sponsors/askalf"><img src="https://img.shields.io/badge/sponsor-askalf-8b5cf6?logo=githubsponsors&logoColor=white" alt="Sponsor on GitHub"></a>
 </p>
 
-<sub>no accounts · no ads · no analytics · no query log · one ~45 KB HTML file · engine traffic only through a VPN · MIT</sub>
+<sub>no accounts · no ads · no analytics · no query log · one ~50 KB HTML file · engine traffic only through a VPN · MIT</sub>
 
 <sub><a href="#use-it">Use it</a> · <a href="#run-your-own">Run your own</a> · <a href="#check-it-yourself">Check it yourself</a> · <a href="#who-sees-your-query">Who sees your query</a> · <a href="#how-its-built">How it's built</a> · <a href="#reference">Reference</a> · <a href="#sponsor">Sponsor</a></sub>
 
@@ -36,7 +36,7 @@ Most private search engines ask you to trust a privacy policy. Amnesia is built 
 ## Run your own
 
 ```bash
-docker run -d -p 8080:8080 ghcr.io/askalf/amnesia
+docker run -d -p 127.0.0.1:8080:8080 ghcr.io/askalf/amnesia
 ```
 
 Open <http://localhost:8080>. It's the same page and the same SearXNG tuning in one container, and the page talks only to its own origin: no Cloudflare, no Turnstile, `connect-src 'self'`. The image is multi-arch, runs unprivileged, and ships SLSA build provenance you can check with `gh attestation verify`. From a home connection, it also turns back on the engines the hosted instance can't reach through a VPN. The [self-host guide](docs/self-host.md) covers the hardened run line, the options, and the full production shape (VPN by network namespace, tunnel, gated Worker).
@@ -62,8 +62,8 @@ The full list covers every guarantee, what enforces it, and how to verify it, in
 
 | On the path | Sees | Keeps |
 |---|---|---|
-| **Your browser** | everything | a theme preference; nothing is sent to us about you |
-| **API gate** (Cloudflare Worker) | your IP and the query (Cloudflare terminates TLS) | an edge-cache entry keyed on the query text alone: 3 minutes for a search, 6 hours for autocomplete; never your IP, cookie or token |
+| **Your browser** | everything | a theme preference, the session cookie, and your searches as `?q=` URLs in its own history (use a private window to skip that); nothing is sent to us about you |
+| **API gate** (Cloudflare Worker) | your IP and the query (Cloudflare terminates TLS) | an edge-cache entry keyed on the query text alone: 3 minutes for a search, 6 hours for autocomplete; never your IP, cookie or token ([one timing side channel](docs/privacy-model.md#who-sees-what)) |
 | **Origin lock** (WAF) | the request, only to refuse it | nothing: a 403 for anything without the gate's secret |
 | **SearXNG** | the query, with no client IP | nothing: no result cache, no access log |
 | **VPN** (ProtonVPN over WireGuard) | encrypted traffic | per ProtonVPN's policy |
@@ -77,8 +77,8 @@ Amnesia doesn't protect against a global adversary watching both ends, a comprom
 - **A bot gate that isn't a CAPTCHA per search.** A Cloudflare Worker verifies one Turnstile solve and issues an HMAC-signed session cookie good for 6 hours, renewed while you keep searching up to 24 hours from the solve; searches in that window never see a challenge. The gate fails **closed** when its secrets are missing. [Architecture](docs/architecture.md)
 - **No way around the gate.** A WAF rule answers 403 to any request on the backend hostname without the gate's secret header, and zone rate limits cover `/search` on both hosts.
 - **One way out: the VPN.** SearXNG has no network interface of its own. It runs inside Gluetun's network namespace, and Gluetun drops all traffic while the tunnel is down, so a VPN outage takes search down rather than leaking your queries out the host's own IP. The container runs with no Linux capabilities, a read-only root, `no-new-privileges`, a memory cap and a digest-pinned image.
-- **One HTML file, CSP by hash.** About 45 KB with no framework and no build step, and fonts are self-hosted. Web search makes no third-party request except the Turnstile challenge; image search also loads each thumbnail from its own host, which is the one place your IP reaches anyone but Cloudflare. The Content-Security-Policy allows the page's one script and one style by SHA-256 hash, generated from the HTML by [a script](scripts/csp-hashes.mjs) that CI re-runs on every change.
-- **Tested, fuzzed, scanned.** 46 zero-dependency `node:test` tests drive the Worker's real export (forged, expired and spliced cookies, the Turnstile hostname check, CORS, a cache key with no cookie, token or IP) and run the page's URL guards from its own bytes. ClusterFuzzLite fuzzes the cookie boundary weekly, and CodeQL runs on every push.
+- **One HTML file, CSP by hash.** About 50 KB with no framework and no build step, and fonts are self-hosted. Web search makes no third-party request except the Turnstile challenge; image search also loads each thumbnail from its own host, which is the one place your IP reaches anyone but Cloudflare. The Content-Security-Policy allows the page's one script and one style by SHA-256 hash, generated from the HTML by [a script](scripts/csp-hashes.mjs) that CI re-runs on every change.
+- **Tested, fuzzed, scanned.** Zero-dependency `node:test` tests drive the Worker's real export (forged, expired and spliced cookies, the Turnstile hostname check, CORS, a cache key with no cookie, token or IP) and run the page's URL guards from its own bytes. Jazzer.js fuzzes the cookie boundary weekly and on PRs that touch it, and CodeQL runs on every push.
 - **Watched every day.** A canary at 14:17 UTC checks the live site (200), the gate (401), the origin lock (403), the OpenSearch file and the deploy token's expiry, and fails if the OpenSSF Scorecard drops.
 - **Engines that can't see you.** The hosted instance queries Brave, Bing, DuckDuckGo, Yandex, Crowdview, searchmysite and Wikipedia for the web, plus per-category engines, all through the VPN. Google, Mojeek and Qwant refuse every VPN exit, so the hosted instance does without them. [Engine coverage](docs/engines.md)
 

@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Back and Forward work.** Loading a `?q=` link or pressing Back re-pushed
+  the search into history, so a link left a duplicate entry, Back wiped the
+  forward stack, and repeated Back never left the site.
+- **Only the newest search renders.** A slow search's answer no longer lands
+  over a newer one, and suggestions no longer reopen over the results after
+  Enter.
+- **Image search prefers thumbnails** over each full-size original from its
+  own host, and loads the original only when a result has no thumbnail.
+- The page works with site data blocked (a throwing `localStorage` used to
+  stop the whole script), validates `?cat=`/`?p=`, leaves Enter to an IME
+  mid-composition, and counts only the results it shows.
+- **The API gate's Turnstile binding can't skip itself.** A siteverify
+  success with no hostname was accepted; it is now `403
+  turnstile_hostname_mismatch`, like one for another hostname. An
+  `ALLOWED_ORIGIN` that isn't a URL, or a non-numeric
+  `SESSION_TTL`/`SESSION_MAX_AGE` (`6h` was read as 6 seconds), is now
+  `500 misconfigured`.
+- **Empty answers stay out of the edge cache.** An upstream blip (SearXNG
+  answering 200 with no results or no suggestions) was served to everyone
+  for the whole TTL.
+- The self-host image's timeouts are the hosted ones (3 s for every enabled
+  engine, no retry); they were 4–8 s. Every enabled engine on the hosted
+  instance is now 3 s too.
+- `infra/DEPLOY.md` and the tunnel snippet provision `search-origin`, the
+  Worker's origin, instead of `api.amnesia.tax`; `worker/DEPLOY.md` sets
+  `SESSION_SECRET`.
+
+### Changed
+- `x-amnesia-cache` is sent to `BRIDGE_IPS` only, and the privacy model now
+  states the shared edge cache's timing side channel.
+- The pre-1.1.0 `exp.sig` cookie format is no longer accepted (all such
+  cookies expired days after 1.1.0).
+- The self-host one-liner binds `127.0.0.1`, the image's `USER` is numeric
+  (977), and `infra/` compose refuses to start without `AMNESIA_SEARXNG_SECRET`.
+- The fuzz target checks arbitrary input against an independent HMAC oracle.
+- Dependabot covers `infra/` compose digests (SearXNG, gluetun); the
+  ClusterFuzzLite build runs on PRs that change its inputs; the sponsors
+  sync closes a bot PR the sponsor list no longer supports.
+
 ## [1.1.0] - 2026-09-25
 
 ### Added

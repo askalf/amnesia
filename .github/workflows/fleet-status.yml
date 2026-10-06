@@ -15,7 +15,7 @@ on:
   issue_comment:
     types: [created, edited, deleted]
   workflow_run:
-    workflows: ['Fleet status self-test', 'Fleet review relay', CI, CodeQL, Image, labels, 'PR triage', Redline, Fuzz]
+    workflows: ['Fleet status self-test', 'Fleet review relay', CI, CodeQL, Image, labels, 'PR triage', Redline, Fuzz, 'ClusterFuzzLite coverage']
     types: [completed]
 
 permissions: {}
