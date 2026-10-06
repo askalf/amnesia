@@ -1243,9 +1243,8 @@
     const validPage = (p) => Math.max(1, parseInt(p, 10) || 1);
     let searchSeq = 0;   // only the newest search may render
 
-    // fromHistory: the URL already says this search (Back/Forward, or a ?q=
-    // link being loaded), so don't push it again. Pushing there duplicated the
-    // entry on load and wiped the forward stack on every Back.
+    // fromHistory: the current history entry already is this search (Back/Forward,
+    // or a ?q= link being loaded), so the entry is replaced, never pushed again.
     async function doSearch(page, fromHistory) {
       const query = q.value.trim();
       if (!query) return;
