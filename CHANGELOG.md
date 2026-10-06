@@ -14,8 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Only the newest search renders.** A slow search's answer no longer lands
   over a newer one, and suggestions no longer reopen over the results after
   Enter.
-- **Image search loads thumbnails**, not each full-size original from its
-  own host.
+- **Image search prefers thumbnails** over each full-size original from its
+  own host, and loads the original only when a result has no thumbnail.
 - The page works with site data blocked (a throwing `localStorage` used to
   stop the whole script), validates `?cat=`/`?p=`, leaves Enter to an IME
   mid-composition, and counts only the results it shows.
