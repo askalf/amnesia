@@ -237,7 +237,14 @@ export default {
     // Store good answers at the edge; the client copy stays no-store. The
     // stored copy's cache-control is what governs edge retention (per-path TTL).
     if (edgeCacheKey && originResp.status === 200) {
-      const text = await originResp.text();
+      // fetch() resolves once the headers arrive, so a body that breaks after
+      // them fails here, past the catch above.
+      let text;
+      try {
+        text = await originResp.text();
+      } catch (e) {
+        return json({ error: "origin_unreachable" }, 502, cors());
+      }
       const stored = cacheable(text, isAc, normalizedQ);
       if (stored !== null) {
         ctx.waitUntil(

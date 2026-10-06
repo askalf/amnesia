@@ -25,9 +25,9 @@ ALLOWED_ORIGIN = "https://amnesia.tax"
 # per worker/DEPLOY.md (cloudflared ingress search-origin.amnesia.tax -> :8081).
 ORIGIN_HOST = "https://search-origin.amnesia.tax"
 # Session cookie lifetime in seconds (Turnstile solved once, then skipped).
-# 6h (was 30min): the cookie is just an HMAC-signed solve time and expiry —
-# nothing user-identifying — so a longer life cuts re-challenges at negligible
-# risk. Whole seconds only: anything else ("6h") is a 500 misconfigured.
+# 6h (was 30min): the cookie is just an HMAC-signed solve time and expiry,
+# with nothing user-identifying in it, so a longer life cuts re-challenges at
+# negligible risk. Whole seconds only: anything else ("6h") is a 500 misconfigured.
 SESSION_TTL = "21600"
 # A cookie with under half its life left is renewed on the next request, but
 # never past this many seconds from the Turnstile solve that started it: 24h.

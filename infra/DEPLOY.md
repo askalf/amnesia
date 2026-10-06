@@ -147,7 +147,7 @@ systemctl restart cloudflared
   e.g. 30 req / 10s per IP → Block (this is the primary per-IP throttle;
   it sees the true client IP).
 - **Bot Fight Mode** ON for the zone.
-- Proxy (orange cloud) both records — they are, via the tunnel CNAMEs.
+- Proxy (orange cloud) both records. They are, via the tunnel CNAMEs.
 
 ## 5. Front-end — Pages domain + deploy
 

@@ -507,6 +507,25 @@ describe('edge cache', () => {
     assert.equal(r.status, 502);
     assert.equal(r.json().error, 'origin_unreachable');
   });
+
+  test('origin body that breaks after the headers → 502 origin_unreachable, nothing stored', async () => {
+    origin = () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"query":"x","res'));
+            controller.error(new Error('tunnel dropped mid-body'));
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    const r = await call('/search?q=x', { headers: { cookie: await validCookie() } });
+    assert.equal(r.status, 502);
+    assert.equal(r.json().error, 'origin_unreachable');
+    assert.equal(r.header('access-control-allow-origin'), SITE);
+    assert.equal(r.header('access-control-allow-credentials'), 'true');
+    assert.equal(cache.size, 0);
+  });
 });
 
 describe('origin secret', () => {
