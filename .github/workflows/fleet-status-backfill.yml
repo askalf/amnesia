@@ -11,7 +11,8 @@ jobs:
   backfill:
     # Dispatch only, so only our own branches run here: on amnesia-exec, a backfill of the
     # fleet/verify and fleet/review statuses does not wait on GitHub's hosted queue.
-    runs-on: [self-hosted, amnesia-exec]
+    # A fork repository has no amnesia-exec runners, so there it runs on GitHub's.
+    runs-on: ${{ github.repository == 'askalf/amnesia' && fromJSON('["self-hosted","amnesia-exec"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     permissions:
       contents: read

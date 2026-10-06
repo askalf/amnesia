@@ -23,11 +23,9 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    # Our own code (pushes, same-repo PRs, schedules, dispatches) runs on amnesia-exec, the
-    # non-root one-job runners on our host (platform deploy/gha-runners), so GitHub's hosted
-    # queue going down does not hold our PRs. A fork's PR and a Dependabot PR run code nobody
-    # here wrote, so they stay on GitHub's runners.
-    runs-on: ${{ github.event.pull_request && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]') && 'ubuntu-latest' || fromJSON('["self-hosted","amnesia-exec"]') }}
+    # CodeQL runs on GitHub's runners: it sizes itself to the machine, and the exec runners of
+    # every repo share one host, so concurrent analyses would exhaust its memory.
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       security-events: write # upload the SARIF results to code scanning
@@ -47,19 +45,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # CodeQL sizes itself to the machine's RAM and cores; on our host that is the whole box, while
-      # every exec runner shares one slice. On our runner it gets 2G and two threads.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-          ram: ${{ runner.environment == 'self-hosted' && '2048' || '' }}
-          threads: ${{ runner.environment == 'self-hosted' && '2' || '' }}
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           category: "/language:${{ matrix.language }}"
-          ram: ${{ runner.environment == 'self-hosted' && '2048' || '' }}
-          threads: ${{ runner.environment == 'self-hosted' && '2' || '' }}
