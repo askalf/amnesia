@@ -9,8 +9,8 @@
 # The ClusterFuzzLite build (.clusterfuzzlite/Dockerfile, context = repo root)
 # also runs from this context: it COPYs build.sh, which runs `npm ci` and
 # compiles fuzz/*.fuzz.js, which import the Worker source. Removing any of
-# these breaks the fuzz build (the cflite workflow only runs weekly/on
-# dispatch, so no PR would catch it). Safe for the image: image/Dockerfile
+# these breaks the fuzz build, which cflite.yml now builds on any PR touching
+# this file or .clusterfuzzlite/. Safe for the image: image/Dockerfile
 # COPYs its files explicitly, so none of this reaches the shipped image.
 !.clusterfuzzlite/
 !package.json

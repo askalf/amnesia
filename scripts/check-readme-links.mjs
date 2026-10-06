@@ -32,9 +32,9 @@ function slugify(text) {
   let s = text.toLowerCase();
   for (let prev = null; prev !== s; ) { prev = s; s = s.replace(/<[^>]*>/g, ''); }
   return s
-    .replace(/[`*_~]/g, '')             // markdown emphasis / code
+    .replace(/[`*~]/g, '')              // markdown emphasis / code
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // links → text
-    .replace(/[^\p{L}\p{N}\s-]/gu, '')  // punctuation and emoji
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '') // punctuation and emoji; GitHub keeps `_`
     .trim()
     .replace(/\s/g, '-');
 }

@@ -80,7 +80,7 @@ const originOf = (url) => new URL(url).origin;
 const originCalls = () => calls.filter((c) => originOf(c.url) === ORIGIN);
 const verifyCalls = () => calls.filter((c) => originOf(c.url) === 'https://challenges.cloudflare.com');
 
-/** The cookie VALUE (exp.sig) from a Set-Cookie line. */
+/** The cookie VALUE (start.exp.sig) from a Set-Cookie line. */
 const cookieValue = (setCookie) => setCookie.split(';')[0].slice(COOKIE_NAME.length + 1);
 const validCookie = async (ttl = 60, secret = ENV.SESSION_SECRET) =>
   `${COOKIE_NAME}=${cookieValue(await buildCookie(secret, ttl))}`;
@@ -103,6 +103,21 @@ describe('fails closed without its secrets', () => {
   test('an empty-string secret counts as missing', async () => {
     const r = await call('/search?q=x', { env: { ...ENV, SESSION_SECRET: '' } });
     assert.equal(r.status, 500);
+  });
+
+  test('a garbled TTL or max age → 500, not a silently wrong lifetime', async () => {
+    for (const bad of [{ SESSION_TTL: '6h' }, { SESSION_TTL: '0' }, { SESSION_TTL: 'abc' }, { SESSION_MAX_AGE: '24h' }, { SESSION_MAX_AGE: '-1' }]) {
+      const r = await call('/session', { env: { ...ENV, ...bad }, headers: { 'cf-turnstile-token': 't' } });
+      assert.equal(r.status, 500, JSON.stringify(bad));
+      assert.deepEqual(r.json(), { error: 'misconfigured' });
+    }
+    assert.equal(calls.length, 0);
+  });
+
+  test('an ALLOWED_ORIGIN with no hostname to bind tokens to → 500', async () => {
+    const r = await call('/search?q=x', { env: { ...ENV, ALLOWED_ORIGIN: 'amnesia.tax' }, headers: { 'cf-turnstile-token': 't' } });
+    assert.equal(r.status, 500);
+    assert.equal(calls.length, 0);
   });
 });
 
@@ -171,9 +186,9 @@ describe('session cookie', () => {
   test('an edge-cache hit also renews an ageing cookie', async () => {
     await call('/search?q=cached', { headers: { cookie: await validCookie(1800) } });
     const r = await call('/search?q=cached', { headers: { cookie: await validCookie(60) } });
-    assert.equal(r.header('x-amnesia-cache'), 'hit');
+    assert.equal(r.status, 200);
     assert.ok(r.header('set-cookie'));
-    assert.equal(originCalls().length, 1);
+    assert.equal(originCalls().length, 1, 'served from the edge');
   });
 
   const agedCookie = async (age, left) => {
@@ -198,12 +213,11 @@ describe('session cookie', () => {
     assert.equal(capped.header('set-cookie'), null);
   });
 
-  test('a cookie from before renewal (exp.sig) still verifies but is not renewed', async () => {
+  test('the pre-1.1.0 format (exp.sig), even correctly signed, is no longer accepted', async () => {
     const exp = String(nowS() + 60);
     const legacy = `${COOKIE_NAME}=${exp}.${await hmac(ENV.SESSION_SECRET, exp)}`;
     const r = await call('/search?q=x', { headers: { cookie: legacy } });
-    assert.equal(r.status, 200);
-    assert.equal(r.header('set-cookie'), null);
+    assert.equal(r.status, 401);
   });
 
   test('a legacy signature spliced onto a start time → 401', async () => {
@@ -233,18 +247,19 @@ describe('session cookie', () => {
   });
 
   test('an expired cookie with a correct signature → 401', async () => {
-    const exp = String(nowS() - 5);
-    const r = await call('/search?q=x', { headers: { cookie: `${COOKIE_NAME}=${exp}.${await hmac(ENV.SESSION_SECRET, exp)}` } });
+    const payload = `${nowS() - 65}.${nowS() - 5}`;
+    const r = await call('/search?q=x', { headers: { cookie: `${COOKIE_NAME}=${payload}.${await hmac(ENV.SESSION_SECRET, payload)}` } });
     assert.equal(r.status, 401);
   });
 
   test('a spliced cookie (real signature, extended expiry) → 401', async () => {
-    const exp = String(nowS() + 60);
-    const sig = await hmac(ENV.SESSION_SECRET, exp);
-    const extended = String(nowS() + 10 * 365 * 86400);
+    const start = String(nowS());
+    const payload = `${start}.${nowS() + 60}`;
+    const sig = await hmac(ENV.SESSION_SECRET, payload);
+    const extended = `${start}.${nowS() + 10 * 365 * 86400}`;
     const r = await call('/search?q=x', { headers: { cookie: `${COOKIE_NAME}=${extended}.${sig}` } });
     assert.equal(r.status, 401);
-    assert.equal(await verifySession(`${exp}.${sig}`, ENV.SESSION_SECRET), true, 'the unspliced original is valid');
+    assert.equal(await verifySession(`${payload}.${sig}`, ENV.SESSION_SECRET), true, 'the unspliced original is valid');
   });
 
   test('malformed cookie values → 401', async () => {
@@ -277,6 +292,25 @@ describe('Turnstile token', () => {
     const r = await call('/search?q=hi', { headers: { 'cf-turnstile-token': 'tok-h' } });
     assert.equal(r.status, 200);
     assert.equal(new URLSearchParams(String(verifyCalls()[0].init.body)).get('response'), 'tok-h');
+  });
+
+  test('a success that names no hostname → 403, the binding is not skipped', async () => {
+    siteverify = { success: true };
+    const r = await call('/search?q=hi', { headers: { 'cf-turnstile-token': 't' } });
+    assert.equal(r.status, 403);
+    assert.equal(r.json().error, 'turnstile_hostname_mismatch');
+    assert.equal(originCalls().length, 0);
+  });
+
+  test('siteverify answering non-JSON → 502', async () => {
+    const real = globalThis.fetch;
+    globalThis.fetch = async (input, init) =>
+      new URL(typeof input === 'string' ? input : input.url).origin === 'https://challenges.cloudflare.com'
+        ? new Response('<html>bad gateway</html>', { status: 502 })
+        : real(input, init);
+    const r = await call('/search?q=hi', { headers: { 'cf-turnstile-token': 't' } });
+    assert.equal(r.status, 502);
+    assert.equal(r.json().error, 'verify_unreachable');
   });
 
   test('a token minted for another hostname → 403 turnstile_hostname_mismatch, nothing proxied', async () => {
@@ -388,10 +422,49 @@ describe('edge cache', () => {
     const cookie = await validCookie();
     const first = await call('/search?q=%20%20LiNuX%20&format=json&pageno=1', { headers: { cookie } });
     const second = await call('/search?pageno=1&q=linux&format=json', { headers: { cookie } });
+    assert.equal(first.status, 200);
     assert.equal(originCalls().length, 1);
-    assert.equal(second.header('x-amnesia-cache'), 'hit');
     assert.equal(second.header('cache-control'), 'no-store', 'the client copy stays no-store');
-    assert.equal(second.body, first.body);
+    assert.deepEqual(JSON.parse(second.body).results, JSON.parse(first.body).results);
+  });
+
+  test('a hit is not announced to clients (x-amnesia-cache goes to BRIDGE_IPS only)', async () => {
+    const env = { ...ENV, BRIDGE_IPS: '198.51.100.1' };
+    const cookie = await validCookie();
+    await call('/search?q=probe', { env, headers: { cookie } });
+    const visitor = await call('/search?q=probe', { env, headers: { cookie, 'cf-connecting-ip': '203.0.113.9' } });
+    assert.equal(visitor.status, 200);
+    assert.equal(visitor.header('x-amnesia-cache'), null);
+    const bridge = await call('/search?q=probe', { env, headers: { 'cf-connecting-ip': '198.51.100.1' } });
+    assert.equal(bridge.header('x-amnesia-cache'), 'hit');
+    assert.equal(originCalls().length, 1);
+  });
+
+  test('the stored copy carries the normalized query, not the first asker\'s spelling', async () => {
+    origin = () => Response.json({ query: '  Victim Name ', results: [{ url: 'https://example.com/' }] });
+    const cookie = await validCookie();
+    const first = await call('/search?q=%20%20Victim%20Name%20', { headers: { cookie } });
+    assert.equal(first.json().query, '  Victim Name ', 'the asker gets the origin\'s answer as is');
+    const second = await call('/search?q=victim%20name', { headers: { cookie } });
+    assert.equal(second.json().query, 'victim name');
+    assert.equal(originCalls().length, 1);
+  });
+
+  test('empty answers (an upstream blip) are not stored', async () => {
+    const cookie = await validCookie();
+    for (const [path, body] of [
+      ['/search?q=a', { query: 'a', results: [], unresponsive_engines: [['bing', 'timeout']] }],
+      ['/autocompleter?q=b', ['b', []]],
+      ['/autocompleter?q=c', []],
+    ]) {
+      origin = () => Response.json(body);
+      const r = await call(path, { headers: { cookie } });
+      assert.equal(r.status, 200, path);
+      assert.deepEqual(r.json(), body, `${path}: the client still gets the answer`);
+    }
+    origin = () => new Response('<html>not json</html>', { status: 200, headers: { 'content-type': 'text/html' } });
+    await call('/search?q=d', { headers: { cookie } });
+    assert.equal(cache.size, 0);
   });
 
   test('the token query param never reaches the key', async () => {
@@ -402,10 +475,15 @@ describe('edge cache', () => {
   });
 
   test('autocomplete is cached for 6h under its own key', async () => {
+    origin = () => Response.json(['Lin', ['linux', 'linear algebra']]);
     await call('/autocompleter?q=Lin', { headers: { cookie: await validCookie() } });
     const [[key, entry]] = [...cache];
     assert.equal(key, `${ORIGIN}/autocompleter?q=lin`);
     assert.equal(entry.headers['cache-control'], 'public, max-age=21600');
+    assert.deepEqual(JSON.parse(entry.body), ['lin', ['linux', 'linear algebra']]);
+    const hit = await call('/autocompleter?q=lin', { headers: { cookie: await validCookie() } });
+    assert.deepEqual(hit.json(), ['lin', ['linux', 'linear algebra']]);
+    assert.equal(originCalls().length, 1);
   });
 
   test('only 200s are stored; other statuses pass through', async () => {

@@ -82,12 +82,17 @@ describe('safeUrl', () => {
     }
   });
 
-  test('relative and empty inputs resolve against the page origin (same-site, never script)', () => {
-    // Real behavior, pinned here so a change to it is deliberate: the base
-    // argument makes relative input land on https://amnesia.tax.
+  test('relative input resolves against the page origin (same-site, never script)', () => {
+    // Pinned so a change to it is deliberate: the base argument makes
+    // relative input land on https://amnesia.tax.
     assert.equal(safeUrl('/path'), 'https://amnesia.tax/path');
-    assert.equal(safeUrl(''), 'https://amnesia.tax/');
-    assert.equal(safeUrl(undefined), 'https://amnesia.tax/undefined');
+  });
+
+  test('a missing value is dropped, not turned into a link to this site', () => {
+    // A result without img_src or url used to render src="/undefined".
+    for (const missing of [undefined, null, '', '   ', 42, {}]) {
+      assert.equal(safeUrl(missing), '', JSON.stringify(missing));
+    }
   });
 });
 
