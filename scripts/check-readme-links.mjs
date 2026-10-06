@@ -24,6 +24,12 @@ const files = process.argv.slice(2).length
 let failures = 0;
 const fail = (msg) => { failures++; console.error(`FAIL: ${msg}`); };
 
+// `_x_` / `__x__` emphasis: a matched underscore run that is not inside a word
+// (CommonMark: an intraword `_` cannot open or close emphasis, so SESSION_TTL
+// keeps its underscore). Code spans match first and are kept as-is, so
+// `_literal_` in backticks is not mistaken for emphasis.
+const UNDERSCORE_EMPHASIS = /(`[^`]*`)|(?<![\p{L}\p{N}_])(_+)(?=[^\s_])(.+?)(?<=[^\s_])\2(?![\p{L}\p{N}_])/gu;
+
 /** GitHub-style heading slug: lowercase, drop punctuation, spaces → hyphens; duplicates get -1, -2 … */
 function slugify(text) {
   // Inline HTML in a heading (<kbd>, <code>…) does not reach the slug, so drop
@@ -31,10 +37,12 @@ function slugify(text) {
   // slug derivation for comparison, not sanitization of anything rendered.
   let s = text.toLowerCase();
   for (let prev = null; prev !== s; ) { prev = s; s = s.replace(/<[^>]*>/g, ''); }
+  // Same loop for nested emphasis (`_a __b__ c_`): each pass peels one level.
+  for (let prev = null; prev !== s; ) { prev = s; s = s.replace(UNDERSCORE_EMPHASIS, (m, code, _run, inner) => code ?? inner); }
   return s
     .replace(/[`*~]/g, '')              // markdown emphasis / code
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // links → text
-    .replace(/[^\p{L}\p{N}\s_-]/gu, '') // punctuation and emoji; GitHub keeps `_`
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '') // punctuation and emoji; GitHub keeps literal `_`
     .trim()
     .replace(/\s/g, '-');
 }
