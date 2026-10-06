@@ -484,3 +484,61 @@ describe('search history and rendering order', () => {
     assert.match(h.el.content.innerHTML, /cats-result/);
   });
 });
+
+describe('result rendering', () => {
+  /** Load `/?q=<q>[&cat=<cat>]`, answer its search with `results`, return the rendered #content. */
+  async function render(results, cat) {
+    const h = pageHarness({ url: '/?q=cats' + (cat ? '&cat=' + cat : '') });
+    const [f] = h.searches();
+    assert.ok(f, 'the page searched on load');
+    f.respond({ results });
+    await settle();
+    return h.el.content.innerHTML;
+  }
+  const imgSrcs = (html) => [...html.matchAll(/<img src="([^"]*)"/g)].map((m) => m[1]);
+  const shownCount = (html) => Number(/<span>(\d+) results in /.exec(html)?.[1]);
+
+  test('image tiles use thumbnail_src, then thumbnail, then img_src, and count only the tiles drawn', async () => {
+    const html = await render([
+      { url: 'https://a.example/', title: 'a', thumbnail_src: 'https://t.example/a-src.jpg', thumbnail: 'https://t.example/a-thumb.jpg', img_src: 'https://o.example/a.jpg' },
+      { url: 'https://b.example/', title: 'b', thumbnail: 'https://t.example/b-thumb.jpg', img_src: 'https://o.example/b.jpg' },
+      { url: 'https://c.example/', title: 'c', img_src: 'https://o.example/c.jpg' },
+      { url: 'https://d.example/', title: 'duplicate of a', thumbnail_src: 'https://t.example/a-src.jpg' },
+      { url: 'https://e.example/', title: 'rejected', thumbnail_src: 'javascript:alert(1)', img_src: 'https://o.example/e.jpg' },
+      { url: 'https://f.example/', title: 'no image' },
+    ], 'images');
+    assert.deepEqual(imgSrcs(html), [
+      'https://t.example/a-src.jpg',
+      'https://t.example/b-thumb.jpg',
+      'https://o.example/c.jpg',
+    ]);
+    assert.equal(shownCount(html), 3);
+    assert.doesNotMatch(html, /javascript:|o\.example\/(a|b|e)\.jpg|duplicate of a|no image/);
+  });
+
+  test('standard results drop duplicate and rejected URLs and count only what is shown', async () => {
+    const html = await render([
+      { url: 'https://example.com/one', title: 'one' },
+      { url: 'https://example.com/one', title: 'one again' },
+      { url: 'javascript:alert(1)', title: 'script' },
+      { url: 'ftp://example.com/file', title: 'ftp' },
+      { title: 'no url' },
+      { url: 'https://example.com/two', title: 'two' },
+    ]);
+    assert.equal((html.match(/class="result-item"/g) || []).length, 2);
+    assert.equal(shownCount(html), 2);
+    assert.match(html, /href="https:\/\/example\.com\/one"/);
+    assert.match(html, /href="https:\/\/example\.com\/two"/);
+    assert.doesNotMatch(html, /one again|javascript:|ftp:|no url/);
+    assert.doesNotMatch(html, /no-results/);
+  });
+
+  test('standard results that are all rejected show zero and the empty state', async () => {
+    const html = await render([
+      { url: 'javascript:alert(1)', title: 'script' },
+      { title: 'no url' },
+    ]);
+    assert.equal(shownCount(html), 0);
+    assert.match(html, /class="no-results"/);
+  });
+});
