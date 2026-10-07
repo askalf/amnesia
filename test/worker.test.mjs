@@ -160,7 +160,7 @@ describe('session cookie', () => {
     const [c] = originCalls();
     assert.ok(c, 'origin was called');
     assert.equal(originCalls().length, 1);
-    assert.equal(c.url, `${ORIGIN}/search?q=hello&format=json`);
+    assert.equal(c.url, `${ORIGIN}/search?format=json&q=hello`, 'params go out in SEARCH_PARAMS order');
     assert.equal(c.init.headers.get('x-amnesia-gate'), ENV.ORIGIN_SECRET);
     assert.equal(c.init.headers.get('user-agent'), 'amnesia-api-gate/1.0');
     assert.equal(c.init.headers.get('cookie'), null, 'the client cookie is not forwarded');
@@ -472,6 +472,19 @@ describe('edge cache', () => {
     assert.equal(r.status, 200);
     assert.equal(cache.size, 1);
     for (const key of cache.keys()) assert.ok(!key.includes('tok-in-url'), key);
+  });
+
+  test('unknown or repeated params reach neither the key nor the origin', async () => {
+    const cookie = await validCookie();
+    const r = await call('/search?x=r4nd0m&pageno=2&q=linux&q=junk&format=json&format=html', { headers: { cookie } });
+    assert.equal(r.status, 200);
+    assert.equal(originCalls().length, 1, 'a miss goes to the origin');
+    assert.equal(originCalls()[0].url, `${ORIGIN}/search?format=json&pageno=2&q=linux`);
+    assert.deepEqual([...cache.keys()], [`${ORIGIN}/search?format=json&pageno=2&q=linux`]);
+    const clean = await call('/search?q=linux&format=json&pageno=2', { headers: { cookie } });
+    assert.equal(clean.status, 200);
+    assert.equal(originCalls().length, 1, 'the clean spelling is served from the same entry');
+    assert.equal(cache.size, 1);
   });
 
   test('autocomplete is cached for 6h under its own key', async () => {

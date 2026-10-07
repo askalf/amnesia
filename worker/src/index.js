@@ -22,8 +22,9 @@
  * AC_CACHE_TTL (prefix queries age well), search results for SEARCH_CACHE_TTL
  * (short: results should stay fresh, but a repeated/popular query inside the
  * window is served at edge speed). Keys are the normalized (trim+lowercase)
- * query plus the sorted remaining params (category, page, format, ...), so
- * the key carries the QUERY only — never a cookie, token, or IP. Lookup
+ * query plus the other SEARCH_PARAMS (category, page, format, ...) in a fixed
+ * order, so the key carries the QUERY only: never a cookie, token, or IP.
+ * Any other parameter is dropped from both the key and the origin URL. Lookup
  * happens AFTER auth — the cache saves the origin trip, not the gate.
  * Clients still get no-store; the edge copy is ours alone. Only answers with
  * something in them are stored (an origin 200 with no results or no
@@ -67,6 +68,13 @@ const SITEVERIFY = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 export const COOKIE_NAME = "amns";
 const AC_CACHE_TTL = 21600; // 6h — autocomplete suggestions age well
 const SEARCH_CACHE_TTL = 180; // 3m — repeat searches at edge speed, results stay fresh
+// The only query parameters passed to the origin or used in the cache key.
+// A parameter SearXNG ignores would still make a new key, so forwarding
+// arbitrary ones lets any session holder append `&x=<random>` and miss the
+// edge cache on every request. The SPA sends q, format, categories and
+// pageno; the rest are SearXNG search options a direct API caller may set.
+// Kept sorted: the cache key is built in this order.
+const SEARCH_PARAMS = ["categories", "format", "language", "pageno", "q", "safesearch", "time_range"];
 
 export default {
   async fetch(request, env, ctx) {
@@ -184,21 +192,21 @@ export default {
 
     // --- Proxy to the SearXNG origin --------------------------------------
     const originBase = env.ORIGIN_HOST || "https://search-origin.amnesia.tax";
-    url.searchParams.delete("cf_turnstile_token");
+    // cf_turnstile_token is not in SEARCH_PARAMS, so it never reaches the origin.
+    const params = searchParams(url.searchParams);
     const originUrl =
-      originBase.replace(/\/$/, "") + url.pathname + "?" + url.searchParams.toString();
+      originBase.replace(/\/$/, "") + url.pathname + "?" + params.toString();
 
-    // Edge cache (see header). Keyed on the normalized query + sorted params
-    // so "Linux " and "linux" (and reordered param spellings) share an entry.
-    // The key never contains a cookie, token, or client IP — query text only.
+    // Edge cache (see header). Keyed on the normalized query + SEARCH_PARAMS
+    // so "Linux " and "linux" (and reordered or padded param spellings) share
+    // an entry. The key never contains a cookie, token, or client IP.
     const isAc = url.pathname === "/autocompleter";
     const cacheTtl = isAc ? AC_CACHE_TTL : SEARCH_CACHE_TTL;
     let edgeCacheKey = null;
-    const normalizedQ = (url.searchParams.get("q") || "").trim().toLowerCase();
+    const normalizedQ = (params.get("q") || "").trim().toLowerCase();
     if (isAc || url.pathname === "/search") {
-      const keyParams = new URLSearchParams(url.searchParams);
+      const keyParams = new URLSearchParams(params);
       keyParams.set("q", normalizedQ);
-      keyParams.sort();
       edgeCacheKey = new Request(
         originBase.replace(/\/$/, "") + url.pathname + "?" + keyParams.toString()
       );
@@ -272,6 +280,17 @@ export default {
 function seconds(value, fallback) {
   if (value === undefined || value === "") return fallback;
   return /^\d+$/.test(String(value).trim()) ? parseInt(value, 10) : 0;
+}
+
+// The SEARCH_PARAMS present in `from`, in SEARCH_PARAMS order, first value
+// of each. A repeated name counts once so `q=a&q=<random>` can't vary the key.
+export function searchParams(from) {
+  const out = new URLSearchParams();
+  for (const name of SEARCH_PARAMS) {
+    const value = from.get(name);
+    if (value !== null) out.set(name, value);
+  }
+  return out;
 }
 
 // The body to keep at the edge for an origin 200, or null to keep nothing.
