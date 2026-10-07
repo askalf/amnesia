@@ -476,12 +476,15 @@ describe('edge cache', () => {
 
   test('unknown or repeated params reach neither the key nor the origin', async () => {
     const cookie = await validCookie();
-    await call('/search?q=linux&format=json&pageno=2', { headers: { cookie } });
     const r = await call('/search?x=r4nd0m&pageno=2&q=linux&q=junk&format=json&format=html', { headers: { cookie } });
     assert.equal(r.status, 200);
-    assert.equal(originCalls().length, 1, 'served from the edge');
+    assert.equal(originCalls().length, 1, 'a miss goes to the origin');
     assert.equal(originCalls()[0].url, `${ORIGIN}/search?format=json&pageno=2&q=linux`);
     assert.deepEqual([...cache.keys()], [`${ORIGIN}/search?format=json&pageno=2&q=linux`]);
+    const clean = await call('/search?q=linux&format=json&pageno=2', { headers: { cookie } });
+    assert.equal(clean.status, 200);
+    assert.equal(originCalls().length, 1, 'the clean spelling is served from the same entry');
+    assert.equal(cache.size, 1);
   });
 
   test('autocomplete is cached for 6h under its own key', async () => {
