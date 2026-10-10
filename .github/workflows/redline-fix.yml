@@ -31,11 +31,10 @@ permissions:
   contents: read
   pull-requests: read
 
-# Queued, not cancelled: forge dispatches one run per review, and a cancelled run leaves no
-# artifact for it to read.
-concurrency:
-  group: fix-${{ github.repository }}-${{ inputs.pr }}
-  cancel-in-progress: false
+# No concurrency group: a group holds one pending run and cancels the one before it, and a
+# cancelled run leaves no artifact for forge to read. Forge serializes instead: it dispatches no
+# run at a head while another run there is queued or running, and a run whose head the PR has
+# moved past fails before it computes anything. Runs waiting for the exec runner queue on it.
 
 jobs:
   fix:
