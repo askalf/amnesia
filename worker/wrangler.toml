@@ -50,3 +50,8 @@ BRIDGE_IPS = "178.104.181.103"
 [[routes]]
 pattern = "api.amnesia.tax/*"
 zone_name = "amnesia.tax"
+
+# CPU time per invocation, not wall time (waiting on the origin does not count). The worst seen
+# in the 14 days to 2026-10-14 was 20.3 ms; the cap stops a runaway loop from billing CPU.
+[limits]
+cpu_ms = 200
