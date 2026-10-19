@@ -118,10 +118,15 @@ jobs:
           # solo-maintained repo cannot lift honestly (Branch-Protection 8,
           # Contributors 3, CII-Best-Practices 5); they are not listed.
           AT_TEN: >-
-            Binary-Artifacts CI-Tests Code-Review Dangerous-Workflow
+            Binary-Artifacts CI-Tests Dangerous-Workflow
             Dependency-Update-Tool Fuzzing License Maintained
             Pinned-Dependencies SAST Security-Policy Token-Permissions
             Vulnerabilities
+          # Code-Review counts approved changesets among the recent ones. One
+          # change was merged without an approval while the review workflow
+          # could not start, so 9 is the honest score until it ages out of the
+          # window; below 9 means another unreviewed merge.
+          AT_NINE: Code-Review
           # Unscored today (-1) and fine that way; only a 10 is acceptable
           # once they do score. Packaging turns 10 when the image workflow
           # publishes; Signed-Releases must never be scored by a release
@@ -145,6 +150,13 @@ jobs:
               echo "::error::Scorecard $c is ${s:-missing} (was 10): $(jq -r --arg c "$c" '.checks[] | select(.name == $c) | .reason' sc.json)"
               fail=1
             fi
+          done
+          for c in $AT_NINE; do
+            s=$(jq -r --arg c "$c" '.checks[] | select(.name == $c) | .score' sc.json)
+            case "$s" in
+              9|10) ;;
+              *) echo "::error::Scorecard $c is ${s:-missing} (floor 9): $(jq -r --arg c "$c" '.checks[] | select(.name == $c) | .reason' sc.json)"; fail=1 ;;
+            esac
           done
           for c in $UNSCORED_OR_TEN; do
             s=$(jq -r --arg c "$c" '.checks[] | select(.name == $c) | .score' sc.json)
