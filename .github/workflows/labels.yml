@@ -42,7 +42,7 @@ jobs:
       contents: read
       issues: read # gh label list
     steps:
-      - uses: askalf/ci/actions/checkout-with-retry@da417cf6f69b3fb9a574a76fe8741e9bc1b2d9dd # main 2026-10-20, askalf/ci#76
+      - uses: askalf/ci/actions/checkout-with-retry@ef9458634953936d96aed1ff12cf893dd3d17bfe # main 2026-10-21, askalf/ci#89
         with:
           persist-credentials: false
 
