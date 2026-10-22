@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: askalf/ci/actions/checkout-with-retry@c15f1083cee9da50beda97158e393d0c46afb177 # main 2026-10-21, askalf/ci#91
+        uses: askalf/ci/actions/checkout-with-retry@aae8ab88a0fd614bc1a1c738cd12775cabc44904 # main 2026-10-22, askalf/ci#108
         with:
           persist-credentials: false
 
@@ -72,7 +72,7 @@ jobs:
     runs-on: ${{ (github.repository != 'askalf/amnesia' || github.event.pull_request && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || fromJSON('["self-hosted","amnesia-exec"]') }}
     timeout-minutes: 10
     steps:
-      - uses: askalf/ci/actions/checkout-with-retry@c15f1083cee9da50beda97158e393d0c46afb177 # main 2026-10-21, askalf/ci#91
+      - uses: askalf/ci/actions/checkout-with-retry@aae8ab88a0fd614bc1a1c738cd12775cabc44904 # main 2026-10-22, askalf/ci#108
         with:
           persist-credentials: false
 
