@@ -39,9 +39,9 @@ permissions:
 jobs:
   fix:
     # Pinned so a change to the fix workflow reaches this repo only through a reviewed bump here.
-    uses: askalf/ci/.github/workflows/redline-fix-run.yml@aae8ab88a0fd614bc1a1c738cd12775cabc44904 # main 2026-10-22, askalf/ci#108
+    uses: askalf/ci/.github/workflows/redline-fix-run.yml@54fb45385aac67e96a83ea83a3cb5420120aabee # main 2026-10-23, askalf/ci#113
     with:
-      redline-ref: aae8ab88a0fd614bc1a1c738cd12775cabc44904
+      redline-ref: 54fb45385aac67e96a83ea83a3cb5420120aabee
       # amnesia-fix is this repository's fix-lane runner: its own non-root account, one job
       # per registration. Only this workflow targets that label.
       runner-label: amnesia-fix
