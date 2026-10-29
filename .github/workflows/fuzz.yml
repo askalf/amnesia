@@ -38,7 +38,7 @@ jobs:
     name: Fuzz (Jazzer.js)
     # Never from a fork: the schedule is inherited by every fork and means nothing there.
     if: github.repository == 'askalf/amnesia'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.repository != 'askalf/amnesia' || github.event.pull_request && (github.event.pull_request.head.repo.full_name != github.repository || github.event.pull_request.user.login == 'dependabot[bot]')) && 'ubuntu-latest' || fromJSON('["self-hosted","amnesia-exec"]') }}
     timeout-minutes: 40
     steps:
       - uses: askalf/ci/actions/checkout-with-retry@9718a75899ff8774d5f6b8135ffb067fabe9dc24 # main 2026-10-29, askalf/ci#139
