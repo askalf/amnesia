@@ -134,8 +134,8 @@ export default {
     let sessionStart; // a renewal keeps the solve time it started from
 
     // Trusted bridge bypass. The headless front-end-verification bridge runs on
-    // the platform box and can't solve Turnstile from that datacenter IP. Allow
-    // requests from the box's egress IP(s) to reach /search without a token so
+    // the operator's server and can't solve Turnstile from that datacenter IP. Allow
+    // requests from the server's egress IP(s) to reach /search without a token so
     // internal front-end verification works. BRIDGE_IPS is a public var (an IP is
     // not a secret), scoped to the operator's own infra; empty = bypass disabled.
     const clientIp = request.headers.get("cf-connecting-ip");

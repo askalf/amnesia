@@ -183,7 +183,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the proxy shape, so cloudflared and the canary are untouched; cutover and
   rollback are two `docker compose` lines each (DEPLOY.md 1b). **Live since
   2026-09-13** on its own ProtonVPN session: egress leaves by the VPN exit with
-  no proxy flag (163.5.171.6, US, versus the host's own address), site 200,
+  no proxy flag (a US exit, not the host's own address), site 200,
   gate 401, a real browser search returns results, and the README's VPN caveat
   is retired.
 - CSP no longer carries `'unsafe-inline'`. The page's one `<script>` and one
