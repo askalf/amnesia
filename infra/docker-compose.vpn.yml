@@ -20,8 +20,8 @@
 # old, now-empty namespace and must be restarted (`docker compose restart
 # searxng`); a plain `docker compose up -d` after a change does that for you.
 #
-# This stack is self-contained — its own ProtonVPN WireGuard session, its own
-# gluetun — and does not touch the platform stack or its network.
+# This stack is self-contained (its own ProtonVPN WireGuard session, its own
+# gluetun) and does not touch any other stack on the host or its network.
 #
 #   docker compose -f docker-compose.vpn.yml --env-file .env up -d
 #
@@ -32,7 +32,7 @@
 
 services:
   gluetun:
-    # Same digest the platform's gluetun runs (v3.40.0).
+    # Pinned digest (gluetun v3.40.0).
     image: qmcgaw/gluetun@sha256:c2ee4191762fca6b6a3c3359a731198a95d9c9af4db32d466e223bf3a84e779b
     container_name: ${AMNESIA_NAME_PREFIX:-amnesia}-gluetun
     hostname: gluetun
@@ -49,11 +49,11 @@ services:
       VPN_TYPE: wireguard
       # A WireGuard config generated for THIS stack in the Proton account
       # (Downloads → WireGuard configuration). One config, one device: do not
-      # reuse the platform's key, the two sessions would fight.
+      # reuse another stack's key, the two sessions would fight.
       WIREGUARD_PRIVATE_KEY: ${AMNESIA_WIREGUARD_PRIVATE_KEY}
       SERVER_COUNTRIES: ${AMNESIA_VPN_COUNTRIES:-United States}
       # No HTTP proxy: searxng shares this namespace and egresses through the
-      # tunnel directly (see header). The rollback shape uses the platform's.
+      # tunnel directly (see header). The rollback shape uses a shared one.
       HTTPPROXY: "off"
       # Let the published searxng port in through gluetun's firewall.
       FIREWALL_INPUT_PORTS: "8080"
@@ -73,7 +73,7 @@ services:
         max-file: "3"
 
   searxng:
-    # Pinned to the same known-good digest the platform stack runs.
+    # Pinned to the same known-good digest as docker-compose.yml.
     image: searxng/searxng@sha256:1a143665b6445079d1cd5b6facdf599d22ac9c29698dd2e7d15eb9b5f5a854cc
     container_name: ${AMNESIA_NAME_PREFIX:-amnesia}-searxng
     # No interface of its own: every packet is gluetun's problem.

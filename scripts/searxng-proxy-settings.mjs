@@ -4,7 +4,7 @@
 // The live stack (infra/docker-compose.vpn.yml) runs SearXNG inside gluetun's
 // network namespace, so infra/searxng/settings.yml has no `outgoing.proxies`:
 // the tunnel is the only route out and a proxy would only add a relay hop.
-// The rollback stack (infra/docker-compose.yml) puts SearXNG on the platform
+// The rollback stack (infra/docker-compose.yml) puts SearXNG on a shared
 // network, where the proxy setting is the ONLY thing sending engine traffic
 // through the VPN: the pinned SearXNG builds its httpx clients with an explicit
 // transport, which makes httpx ignore HTTP_PROXY/HTTPS_PROXY from the
@@ -33,8 +33,8 @@ const HEADER = `# GENERATED — do not edit. Source: infra/searxng/settings.yml
 
 `;
 
-const PROXIES = `  # Rollback shape only: SearXNG shares the platform network here, so this is
-  # what sends every engine request through the platform gluetun's ProtonVPN.
+const PROXIES = `  # Rollback shape only: SearXNG shares a network with a gluetun proxy here, so
+  # this is what sends every engine request through that gluetun's ProtonVPN.
   proxies:
     all://:
       - http://gluetun:8888

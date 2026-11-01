@@ -29,7 +29,7 @@ directly — see step 4.
 
 ## Operator provisioning (needs dashboard / a broader-scoped token)
 
-The scoped DNS token used elsewhere this session can't create Turnstile widgets
+A token scoped to DNS only can't create Turnstile widgets
 or deploy Workers. Do these in the Cloudflare dashboard (or with a token scoped
 for Workers Scripts:Edit + Turnstile:Edit + Workers Routes:Edit + DNS:Edit).
 
@@ -39,8 +39,8 @@ for Workers Scripts:Edit + Turnstile:Edit + Workers Routes:Edit + DNS:Edit).
    - Copy the **site key** (public, goes in the SPA) and **secret key**.
 
 2. **DNS for the origin hostname.** Add a **proxied** CNAME
-   `search-origin.amnesia.tax` → `a1a6fac4-5859-4e5b-a3e3-e169b532c9b3.cfargotunnel.com`
-   (same tunnel as api). Then on the Hetzner host add the ingress rule to
+   `search-origin.amnesia.tax` → `<tunnel-id>.cfargotunnel.com`
+   (same tunnel as api). Then on the backend host add the ingress rule to
    `/etc/cloudflared/config.yml` ABOVE the 404 catch-all and restart cloudflared:
    ```yaml
      - hostname: search-origin.amnesia.tax
@@ -84,5 +84,5 @@ curl -s -o /dev/null -w '%{http_code}\n' 'https://api.amnesia.tax/search?q=x&for
 If you instead want search live immediately without the Worker, the one-liner
 fallback is a Configuration Rule on `http.host eq "api.amnesia.tax"` setting
 `security_level: essentially_off` + `bic: off` (abuse still covered by the
-rate-limit rule). That was the rejected "weaken" path; the Turnstile gate here is
-the stronger option you chose.
+rate-limit rule). That path weakens the zone's protection; the Turnstile gate
+here is the stronger option.

@@ -1,6 +1,6 @@
 # amnesia — dedicated public SearXNG backend for https://api.amnesia.tax
 #
-# Standalone stack, intentionally separate from the askalf platform stack.
+# Standalone stack, intentionally separate from anything else on the host.
 # Single service: amnesia-searxng — public-facing SearXNG whose JSON API the
 # static front-end at https://amnesia.tax consumes.
 #
@@ -9,19 +9,19 @@
 # requests). Per-IP rate limiting is delegated to the Cloudflare edge, which
 # sees the true client IP.
 #
-# Outbound search-engine traffic egresses through the platform's ProtonVPN
+# Outbound search-engine traffic egresses through an existing ProtonVPN
 # gluetun HTTP proxy (gluetun:8888) over the shared external `askalf-net`
 # network, so search providers never see the host's datacenter IP. The proxy
 # comes from searxng-proxy/settings.yml (generated from searxng/settings.yml by
 # scripts/searxng-proxy-settings.mjs): SearXNG does not honour the HTTP_PROXY
 # env below for engine requests, so the settings file is what enforces it.
 #
-# Deployed to /root/amnesia on the Hetzner host (see DEPLOY.md). The host's
+# Deployed to /root/amnesia on the backend host (see DEPLOY.md). The host's
 # cloudflared (systemd) routes api.amnesia.tax -> 127.0.0.1:8081.
 
 services:
   searxng:
-    # Pinned to the same known-good digest the platform stack runs.
+    # Pinned to a known-good digest.
     image: searxng/searxng@sha256:1a143665b6445079d1cd5b6facdf599d22ac9c29698dd2e7d15eb9b5f5a854cc
     container_name: amnesia-searxng
     ports:
@@ -31,7 +31,7 @@ services:
       # :? refuses to start with it unset, rather than signing with "".
       SEARXNG_SECRET: ${AMNESIA_SEARXNG_SECRET:?set AMNESIA_SEARXNG_SECRET in .env}
       SEARXNG_BASE_URL: https://api.amnesia.tax/
-      # Egress every engine request through the platform ProtonVPN proxy.
+      # Egress every engine request through the shared ProtonVPN proxy.
       HTTP_PROXY: http://gluetun:8888
       HTTPS_PROXY: http://gluetun:8888
       NO_PROXY: localhost,127.0.0.1
@@ -71,7 +71,7 @@ services:
 
 networks:
   askalf-net:
-    # The platform stack's network. Confirm the real name on the host with
+    # The shared network the existing gluetun is on. Confirm the real name on the host with
     # `docker network ls | grep askalf-net` and set ASKALF_NET_NAME in .env.
     external: true
     name: ${ASKALF_NET_NAME:-askalf_askalf-net}

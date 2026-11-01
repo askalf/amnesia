@@ -1,8 +1,8 @@
-# Redline fix: when Redline requests changes on a pull request here, forge dispatches this run
+# Redline fix: when Redline requests changes on a pull request here, the dispatcher starts this run
 # with the PR, the head Redline reviewed and the review. The fix itself is computed by
 # askalf/ci (redline-fix-run.yml) on this repository's fix-lane runner and uploaded as
 # the redline-fix artifact. Nothing here pushes or comments, and no token that could is on the
-# runner: forge verifies the artifact and pushes the fix to the PR branch with its own token.
+# runner: the dispatcher verifies the artifact and pushes the fix to the PR branch with its own token.
 name: Redline fix
 run-name: Redline fix ${{ github.repository }}#${{ inputs.pr }} @ ${{ inputs.head }}
 
@@ -32,7 +32,7 @@ permissions:
   pull-requests: read
 
 # No concurrency group: a group holds one pending run and cancels the one before it, and a
-# cancelled run leaves no artifact for forge to read. Forge serializes instead: it dispatches no
+# cancelled run leaves no artifact for the dispatcher to read. It serializes instead: it dispatches no
 # run at a head while another run there is queued or running, and a run whose head the PR has
 # moved past fails before it computes anything. Runs waiting for the fix-lane runner queue on it.
 

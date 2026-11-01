@@ -5,7 +5,7 @@ Two moving parts:
 | Piece | Where | Serves |
 |-------|-------|--------|
 | **Front-end** | Cloudflare Pages project `amnesia-site` (built from `main` by the Pages Git integration) | `https://amnesia.tax` |
-| **Backend** | This `infra/` stack on the Hetzner host at `/root/amnesia/` | `https://api.amnesia.tax` |
+| **Backend** | This `infra/` stack on a Docker host at `/root/amnesia/` | `https://api.amnesia.tax` |
 
 The front-end (`src/amnesia-search.html`, line ~945) calls
 `GET https://api.amnesia.tax/search?q=…&format=json`. Because that is a
@@ -14,12 +14,12 @@ The front-end (`src/amnesia-search.html`, line ~945) calls
 
 ---
 
-## 1. Backend — deploy on Hetzner
+## 1. Backend: deploy on the host
 
 ```sh
-ssh -i ~/.ssh/askalf_platform_ed25519 root@178.104.181.103
+ssh <user>@<backend-host>
 
-# Find the platform network's real name
+# Find the shared network's real name (the existing gluetun is on it)
 docker network ls | grep askalf-net      # e.g. askalf_askalf-net
 
 mkdir -p /root/amnesia
@@ -44,18 +44,18 @@ where SearXNG cannot leave except by the tunnel.
 
 ## 1b. Backend, the live shape — VPN by topology (`docker-compose.vpn.yml`)
 
-> **This is what runs in production since 2026-09-13.** Section 1 above is the
+> **This is the production shape.** Section 1 above is the
 > older proxy shape, kept as the rollback path.
 
 
-`docker-compose.yml` puts SearXNG on the platform's network and *tells* it to
-use the platform gluetun's proxy; an engine that ignored the proxy setting
+`docker-compose.yml` puts SearXNG on a shared Docker network and *tells* it to
+use an existing gluetun's proxy there; an engine that ignored the proxy setting
 would leave by the host IP. `docker-compose.vpn.yml` is the other shape: its
 own gluetun, and SearXNG inside that container's network namespace
 (`network_mode: "service:gluetun"`). There is then exactly one way out, the
-tunnel, and gluetun's firewall drops everything while the tunnel is down — a
+tunnel, and gluetun's firewall drops everything while the tunnel is down, so a
 VPN outage is a search outage, never a leak. The stack is self-contained and
-touches nothing in the platform stack.
+touches nothing else on the host.
 
 Verified on the host with the tunnel deliberately down (a bogus key): from
 inside the namespace a lookup of ifconfig.me cannot resolve and a request to
@@ -65,7 +65,7 @@ with the host IP.
 ```sh
 # One-time: generate a WireGuard configuration for THIS stack in the Proton
 # account (Downloads → WireGuard configuration). One config = one device; do
-# not reuse the platform's key, the two sessions would fight.
+# not reuse another stack's key, the two sessions would fight.
 # The env file gains:
 #   AMNESIA_WIREGUARD_PRIVATE_KEY = <private key from that config>
 #   AMNESIA_VPN_COUNTRIES         = United States   (optional; default)
@@ -102,7 +102,7 @@ forwards `/search` and `/autocompleter` and nothing else.
 
 ```sh
 # From your machine: forward the loopback port, then open the two pages.
-ssh -i ~/.ssh/askalf_platform_ed25519 -L 8081:127.0.0.1:8081 root@178.104.181.103
+ssh -L 8081:127.0.0.1:8081 <user>@<backend-host>
 #   http://127.0.0.1:8081/stats          response time, reliability per engine
 #   http://127.0.0.1:8081/stats/errors   timeouts and errors per engine
 ```
@@ -120,8 +120,8 @@ hostname, `search-origin.amnesia.tax` (why: [`worker/DEPLOY.md`](../worker/DEPLO
 
 ```sh
 # Uses the cloudflared cert, not the scoped API token.
-cloudflared tunnel route dns askalf-platform api.amnesia.tax
-cloudflared tunnel route dns askalf-platform search-origin.amnesia.tax
+cloudflared tunnel route dns <tunnel> api.amnesia.tax
+cloudflared tunnel route dns <tunnel> search-origin.amnesia.tax
 ```
 
 ## 3. cloudflared ingress
@@ -152,7 +152,7 @@ systemctl restart cloudflared
 ## 5. Front-end — Pages domain + deploy
 
 - Bind custom domain `amnesia.tax` (and `www`) to Pages project `amnesia-site`
-  (account `dfdf9f7ec6fe9f816bd9cdc6f2469eca`). Root uses CNAME flattening.
+  in the account that holds the zone. Root uses CNAME flattening.
 - Deploy: the Pages project's own Git integration builds every push to `main`
   (build command `bash scripts/build-site.sh`, output `deploy`); watch it in the
   Pages dashboard. No Actions workflow deploys the front-end. The repo's
@@ -188,7 +188,6 @@ edit are **not** regenerated from any repo — this `infra/` directory is the
 source of truth. Any change made on the host MUST be mirrored back here in the
 same session, or it is lost on the next manual redeploy.
 
-This stack is deliberately **separate from the askalf platform repo** (the
-platform `CLAUDE.md` forbids the `amnesia` brand name anywhere in it). It only
-*borrows* the platform's `gluetun` for VPN egress via the shared `askalf-net`
-network.
+The proxy shape (section 1) runs no VPN of its own: it *borrows* an existing
+`gluetun` for egress via the shared `askalf-net` network. The live shape
+(section 1b) brings its own gluetun and needs no shared network.
