@@ -24,7 +24,9 @@ jobs:
       id-token: write # required by publish_results (OIDC attestation)
     steps:
       - name: Checkout code
-        uses: askalf/ci/actions/checkout-with-retry@5305beec29bdd65ff79d5b431d8c3a25fe945bb1 # main 2026-11-01, askalf/ci#141
+        # Scorecard publishes only from a workflow whose steps it recognises, so the checkout is
+        # actions/checkout itself; this job runs on a hosted runner, which needs no retry.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
