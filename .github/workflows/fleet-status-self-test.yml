@@ -2,15 +2,14 @@
 # refresh list in fleet-status.yml against every workflow that runs on pull requests, the status
 # job's if: against fork and same-repo events, every runs-on that names our runner label, and the
 # review relay. The workflows are read as text from the PR's checkout with a read-only token;
-# nothing in them runs. The paths are every file the check reads.
-# self-test is not a required check here, so a PR that touches none of them runs nothing.
+# nothing in them runs.
+# self-test is a required check here. A required check that never reports holds the merge, so
+# it runs on every pull request, not only on those that change a workflow.
 name: Fleet status self-test
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - .github/workflows/**
 
 permissions: {}
 
@@ -29,7 +28,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: askalf/ci/actions/fleet-status-check@8b4fc27416783ad2528fe29086b3df4f85005673 # main 2026-11-01, askalf/ci#156
+      - uses: askalf/ci/actions/fleet-status-check@cf3327ecdb3de75efa601181bd5ca91c2e17ec2a # main 2026-11-02, askalf/ci#157
         with:
           min-own-exprs: '4'
           repo-only: fleet-status.yml fleet-status-backfill.yml canary.yml release.yml sponsors-readme.yml
