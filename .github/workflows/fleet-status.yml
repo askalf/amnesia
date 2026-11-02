@@ -45,6 +45,8 @@ jobs:
     # issue_comment fires for issues too; only PR comments matter. The script re-checks it.
     # Only verification comments need the status job. Check the previous body too so an edit away
     # from the heading still refreshes statuses; a deletion's event carries the deleted body.
+    # Of the labels, the lanes read only `verified`, so a label added or removed runs the job only
+    # when it is that one (a Dependabot PR adds two others as it opens).
     if: >-
       (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
        (startsWith(github.event.comment.body, '## Verification at') ||
@@ -56,7 +58,9 @@ jobs:
         (contains(fromJSON('["pull_request","pull_request_target","pull_request_review"]'), github.event.workflow_run.event) &&
          github.event.workflow_run.head_repository.full_name != github.repository))) ||
       (github.event_name != 'issue_comment' && github.event_name != 'workflow_run' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       (!contains(fromJSON('["labeled","unlabeled"]'), github.event.action) ||
+        github.event.label.name == 'verified'))
     # On our runner for every event, a fork's included: the job runs the pinned fleet-status action
     # and never PR code, so GitHub's hosted queue going down does not hold the fleet/verify
     # and fleet/review statuses a merge waits on. The runner is this repository's fleet status row
@@ -71,7 +75,7 @@ jobs:
       checks: read
       statuses: write
     steps:
-      - uses: askalf/ci/actions/fleet-status@4365d12f956b60e795b5b55451e2035549a3600c # main 2026-11-01, askalf/ci#153
+      - uses: askalf/ci/actions/fleet-status@84d68a04c25cbc7c50598b05476293c4ae00a898 # main 2026-11-02, askalf/ci#159
         with:
           pr: ${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.pull_requests[0].number }}
           head-repo: ${{ github.event.workflow_run.head_repository.full_name }}
