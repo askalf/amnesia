@@ -10,7 +10,7 @@
   <a href="https://amnesia.tax"><img src="https://img.shields.io/badge/live-amnesia.tax-8b5cf6" alt="Live at amnesia.tax"></a>
   <a href="docs/self-host.md"><img src="https://img.shields.io/badge/docker-ghcr.io%2Faskalf%2Famnesia-8b5cf6?logo=docker&logoColor=white" alt="Self-host image: ghcr.io/askalf/amnesia"></a>
   <a href="https://github.com/askalf/amnesia/actions/workflows/ci.yml"><img src="https://github.com/askalf/amnesia/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://pitlane.askalf.org/"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fpitlane.askalf.org%2Fbadge.json" alt="CI on pitlane"></a>
+  <a href="https://pitlane.askalf.org/"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fpitlane.askalf.org%2Fbadge.json" alt="CI measured"></a>
   <a href="https://github.com/askalf/amnesia/actions/workflows/image.yml"><img src="https://github.com/askalf/amnesia/actions/workflows/image.yml/badge.svg" alt="Image build and smoke test"></a>
   <a href="https://github.com/askalf/amnesia/actions/workflows/codeql.yml"><img src="https://github.com/askalf/amnesia/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
   <a href="https://github.com/askalf/amnesia/actions/workflows/canary.yml"><img src="https://github.com/askalf/amnesia/actions/workflows/canary.yml/badge.svg" alt="Daily live canary"></a>
