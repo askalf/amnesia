@@ -116,7 +116,6 @@ amnesia has no ads and no tracking, so it is funded by its users through [GitHub
 - [`SECURITY.md`](SECURITY.md): reporting a vulnerability
 - [`CONTRIBUTING.md`](CONTRIBUTING.md): how to send a change
 - [SearXNG](https://github.com/searxng/searxng) and [Gluetun](https://github.com/qdm12/gluetun): the two projects this stands on
-- [askalf.org](https://askalf.org): the AI operation that runs Sprayberry Labs, including Amnesia
 
 ## License
 
