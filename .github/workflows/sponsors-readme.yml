@@ -31,7 +31,7 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: askalf/ci/actions/checkout-with-retry@00c95732d25ad90c842a901e52100b2993b2f4eb # main 2026-11-12, askalf/ci#213
+      - uses: askalf/ci/actions/checkout-with-retry@f0be7010038c63c66f4a341d0fd548edf1208c7c # main 2026-11-13, askalf/ci#219
         with:
           # The push below runs as this token; see the header for why a PAT.
           token: ${{ secrets.AMNESIA_BOT_PAT || secrets.GITHUB_TOKEN }}
