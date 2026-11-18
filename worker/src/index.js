@@ -27,12 +27,10 @@
  * a URL it signed itself. The signature is what keeps /img from being an open
  * proxy: it serves the images real searches returned, nothing a caller makes
  * up. The host sees a Cloudflare address and the CF-Worker header naming this
- * zone, never the visitor. Anything that isn't an http(s) URL, that points
- * back into amnesia.tax, or that names a loopback, private or otherwise
- * non-public host, is blanked rather than passed through, so the page
- * never loads a thumbnail straight from its host. Before each fetch, and
- * each redirect hop, the host is resolved over DoH and refused unless every
- * address is public. Only raster types are
+ * zone, never the visitor. Only hosts on IMG_HOSTS, the image engines'
+ * own thumbnail CDNs, are fetched, on the first request and on every
+ * redirect hop; any other value is blanked rather than passed through, so
+ * the page never loads a thumbnail straight from its host. Only raster types are
  * served (no SVG), under IMG_MAX_BYTES, with a sandbox CSP and nosniff;
  * accepted images sit in the colo's edge cache for IMG_CACHE_TTL, keyed on
  * the signed URL alone. Like the search cache, that is shared per colo.
@@ -361,10 +359,29 @@ export function cacheable(text, isAc, normalizedQ) {
 
 // ---- Image proxy ----------------------------------------------------------
 
-// The absolute http(s) URL the proxy may fetch for a result's image value, or
-// null. Protocol-relative values ("//host/x.jpg") count as https; relative
-// paths, other schemes, credentials in the URL, anything on amnesia.tax
-// itself, and any host isPublicHost refuses do not.
+// The image CDNs the proxy fetches from, as anchored hostname patterns: the thumbnail
+// hosts of the image engines this instance runs. Only a provider controls
+// where its own hostname resolves, so no name here can be pointed at a
+// private address, and a redirect is followed only to another name on the
+// list. Everything else (any other host, every IP literal) is refused, which
+// costs nothing visible: a refused thumbnail is blanked and its tile hidden.
+// An instance that turns on another image engine adds that engine's
+// thumbnail host here.
+export const IMG_HOSTS = [
+  /^encrypted-tbn\d\.gstatic\.com$/,             // Google Images
+  /^tse?\d\.(mm|explicit)\.bing\.net$/,          // Bing Images
+  /^live\.staticflickr\.com$/,                    // Flickr, Openverse
+  /^i\.pinimg\.com$/,                             // Pinterest
+  /^(upload|thumb)\.wikimedia\.org$/,              // Wikimedia Commons
+  /^external-content\.duckduckgo\.com$/,          // DuckDuckGo Images
+  /^imgs\.search\.brave\.com$/,                   // Brave Images
+  /^images\.(unsplash|pexels)\.com$/,              // Unsplash, Pexels
+];
+
+// The https URL the proxy may fetch for a result's image value, or null.
+// Protocol-relative values ("//host/x.jpg") and http URLs become https;
+// relative paths, other schemes, credentials in the URL, and any host not
+// on IMG_HOSTS are refused.
 export function imageTarget(value) {
   if (typeof value !== "string") return null;
   let s = value.trim();
@@ -373,108 +390,11 @@ export function imageTarget(value) {
   let u;
   try { u = new URL(s); } catch (e) { return null; }
   if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-  if (u.username || u.password) return null;
-  if (isOwnHost(u.hostname) || !isPublicHost(u.hostname)) return null;
+  if (u.username || u.password || u.port) return null;
+  const host = u.hostname.toLowerCase();
+  if (!IMG_HOSTS.some((re) => re.test(host))) return null;
+  u.protocol = "https:";
   return u.href;
-}
-
-// False for a host the proxy must never be pointed at: every IPv6 literal,
-// IPv4 literals outside public unicast space (URL parsing has already turned
-// forms like 0x7f.1 or 2130706433 into dotted IPv4), single-label names, and
-// the suffixes that only resolve inside a network. A Worker has no resolver to
-// check where a public name points, so names are judged by their spelling and
-// every redirect hop is judged again in proxyImage.
-function isPublicHost(hostname) {
-  const h = hostname.toLowerCase().replace(/\.$/, "");
-  if (h.startsWith("[")) return false;
-  const v4 = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-  if (v4) return isPublicIPv4(v4.slice(1).map(Number));
-  if (!h.includes(".")) return false;
-  return !/(^|\.)(localhost|localdomain|local|internal|intranet|lan|home\.arpa)$/.test(h);
-}
-
-function isPublicIPv4([a, b, c]) {
-  return !(
-    a === 0 || a === 10 || a === 127 || a >= 224 ||
-    (a === 100 && b >= 64 && b <= 127) ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) ||
-    (a === 192 && b === 0 && (c === 0 || c === 2)) ||
-    (a === 198 && (b === 18 || b === 19)) ||
-    (a === 198 && b === 51 && c === 100) ||
-    (a === 203 && b === 0 && c === 113)
-  );
-}
-
-// imageTarget judges a host by its spelling; this judges where it points. A
-// Worker's fetch resolves names itself and never says where they landed, so
-// before each hop proxyImage resolves the name over DNS-over-HTTPS and refuses
-// it unless every A and AAAA answer is public unicast. The fetch resolves the
-// name again, so an answer that changes in between isn't caught here; the
-// check stops a name that plainly points inward, which is the case that
-// matters.
-const DOH = "https://cloudflare-dns.com/dns-query";
-
-export async function resolvesPublic(hostname, signal) {
-  const h = hostname.toLowerCase().replace(/\.$/, "");
-  if (h.startsWith("[") || /^\d+\.\d+\.\d+\.\d+$/.test(h)) return isPublicHost(h);
-  const answers = await Promise.all(["A", "AAAA"].map(async (type) => {
-    const r = await fetch(`${DOH}?name=${encodeURIComponent(h)}&type=${type}`, {
-      headers: { accept: "application/dns-json" },
-      signal,
-    });
-    if (!r.ok) throw new Error(`dns ${r.status}`);
-    const data = await r.json();
-    // 0 = an answer, 3 = no such name (no addresses, refused below).
-    if (data.Status !== 0 && data.Status !== 3) throw new Error(`dns status ${data.Status}`);
-    return Array.isArray(data.Answer) ? data.Answer : [];
-  }));
-  let addresses = 0;
-  for (const a of answers.flat()) {
-    if (a.type === 1) {
-      addresses++;
-      const p = String(a.data).split(".").map(Number);
-      if (p.length !== 4 || p.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false;
-      if (!isPublicIPv4(p)) return false;
-    } else if (a.type === 28) {
-      addresses++;
-      if (!isPublicIPv6(String(a.data))) return false;
-    }
-  }
-  return addresses > 0;
-}
-
-// Global unicast (2000::/3) only, minus documentation and Teredo; a 6to4
-// address is judged by the IPv4 address it carries.
-export function isPublicIPv6(text) {
-  const g = expandIPv6(text.toLowerCase());
-  if (!g) return false;
-  if ((g[0] & 0xe000) !== 0x2000) return false;
-  if (g[0] === 0x2001 && (g[1] === 0x0db8 || g[1] === 0)) return false;
-  if (g[0] === 0x2002) return isPublicIPv4([g[1] >> 8, g[1] & 0xff, g[2] >> 8, g[2] & 0xff]);
-  return true;
-}
-
-// Eight 16-bit groups, or null. Dotted (IPv4-embedding) forms are never
-// global unicast, so they don't parse.
-function expandIPv6(s) {
-  if (s.includes(".")) return null;
-  const halves = s.split("::");
-  if (halves.length > 2) return null;
-  const parts = (x) => (x ? x.split(":") : []);
-  const head = parts(halves[0]);
-  const tail = halves.length === 2 ? parts(halves[1]) : [];
-  const fill = halves.length === 2 ? 8 - head.length - tail.length : 0;
-  if (fill < 0 || (halves.length === 2 && fill === 0)) return null;
-  const groups = [...head, ...Array(fill).fill("0"), ...tail];
-  if (groups.length !== 8 || groups.some((x) => !/^[0-9a-f]{1,4}$/.test(x))) return null;
-  return groups.map((x) => parseInt(x, 16));
-}
-
-function isOwnHost(hostname) {
-  const h = hostname.toLowerCase().replace(/\.$/, "");
-  return h === "amnesia.tax" || h.endsWith(".amnesia.tax");
 }
 
 export function imageSignature(secret, target) {
@@ -527,19 +447,12 @@ async function proxyImage(url, env, ctx, authorized, cors) {
   // Nothing of the visitor's goes upstream: no cookie, no client IP, no
   // referrer. Just the URL and a user agent that says what is asking.
   // Redirects are followed here, at most IMG_MAX_REDIRECTS of them, and each
-  // Location must pass imageTarget before it is fetched, so a signed public
-  // URL can't bounce the fetch to a private address or into amnesia.tax.
+  // Location must pass imageTarget before it is fetched, so a signed URL can
+  // only bounce the fetch to another listed image CDN.
   const signal = AbortSignal.timeout(IMG_TIMEOUT_MS);
   let up;
   let next = target;
   for (let hop = 0; ; hop++) {
-    let publicHost;
-    try {
-      publicHost = await resolvesPublic(new URL(next).hostname, signal);
-    } catch (e) {
-      return json({ error: "image_unreachable" }, 502, cors());
-    }
-    if (!publicHost) return json({ error: "image_refused" }, 502, cors());
     try {
       up = await fetch(next, {
         method: "GET",

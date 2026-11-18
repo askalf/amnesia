@@ -13,8 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the image for you, so Flickr, Pinterest, Wikimedia and Google's thumbnail
   CDN see a Cloudflare address instead of yours. `/img` serves only URLs it
   signed, only to a session cookie or a configured bridge IP, and only raster
-  types. It refuses loopback, private and link-local targets, and names that
-  resolve to one, on every redirect hop too. The site's CSP now allows images from the gate alone.
+  types. It fetches only from the image engines' own thumbnail CDNs, a
+  fixed list of hostnames, on every redirect hop too. The site's CSP now allows images from the gate alone.
 
 ### Removed
 - **The Cloudflare Web Analytics beacon.** It contradicted "no analytics":

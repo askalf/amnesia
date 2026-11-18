@@ -8,7 +8,7 @@
 
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import worker, { buildCookie, hmac, verifySession, sessionTimes, COOKIE_NAME, imageTarget, imageSignature, proxifyImages, readCapped, IMG_MAX_BYTES, isPublicIPv6 } from '../worker/src/index.js';
+import worker, { buildCookie, hmac, verifySession, sessionTimes, COOKIE_NAME, imageTarget, imageSignature, proxifyImages, readCapped, IMG_MAX_BYTES } from '../worker/src/index.js';
 
 const SITE = 'https://amnesia.tax';
 const API = 'https://api.amnesia.tax';
@@ -27,8 +27,6 @@ let cache; // caches.default contents: key URL -> { body, headers, key }
 let pending; // ctx.waitUntil promises
 let siteverify; // what Turnstile's siteverify answers (object, or an Error to throw)
 let origin; // (url, init) => Response for the SearXNG origin
-let dns; // hostname -> addresses (or an Error) for the DoH stub; unlisted names resolve public
-let dnsCalls; // "name/type" for every DoH lookup, kept out of calls
 
 const realFetch = globalThis.fetch;
 const realCaches = globalThis.caches;
@@ -37,8 +35,6 @@ beforeEach(() => {
   calls = [];
   cache = new Map();
   pending = [];
-  dns = {};
-  dnsCalls = [];
   siteverify = { success: true, hostname: 'amnesia.tax' };
   origin = () =>
     new Response(JSON.stringify({ query: 'q', results: [{ url: 'https://example.com/' }] }), {
@@ -47,15 +43,6 @@ beforeEach(() => {
     });
   globalThis.fetch = async (input, init = {}) => {
     const url = typeof input === 'string' ? input : input.url;
-    if (url.startsWith('https://cloudflare-dns.com/dns-query?')) {
-      const q = new URL(url).searchParams;
-      dnsCalls.push(q.get('name') + '/' + q.get('type'));
-      const ips = dns[q.get('name')] ?? ['93.184.216.34', '2606:2800:220:1:248:1893:25c8:1946'];
-      if (ips instanceof Error) throw ips;
-      const type = q.get('type') === 'A' ? 1 : 28;
-      const Answer = ips.filter((ip) => (ip.includes(':') ? 28 : 1) === type).map((data) => ({ name: q.get('name'), type, TTL: 60, data }));
-      return new Response(JSON.stringify({ Status: 0, Answer }), { headers: { 'content-type': 'application/dns-json' } });
-    }
     calls.push({ url, init });
     if (new URL(url).origin === 'https://challenges.cloudflare.com') {
       if (siteverify instanceof Error) throw siteverify;
@@ -564,7 +551,7 @@ describe('origin secret', () => {
 });
 
 describe('image proxy', () => {
-  const HOST = 'https://images.example';
+  const HOST = 'https://live.staticflickr.com';
   const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
   const signedPath = async (target, secret = ENV.SESSION_SECRET) =>
     '/img?' + new URLSearchParams({ u: target, s: await imageSignature(secret, target) }).toString();
@@ -579,20 +566,21 @@ describe('image proxy', () => {
     new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
 
   describe('imageTarget', () => {
-    test('http(s) and protocol-relative URLs pass; everything else is refused', () => {
-      assert.equal(imageTarget('https://t.example/a.jpg'), 'https://t.example/a.jpg');
-      assert.equal(imageTarget('http://t.example/a.jpg'), 'http://t.example/a.jpg');
-      assert.equal(imageTarget('//t.example/a.jpg'), 'https://t.example/a.jpg');
-      assert.equal(imageTarget('  https://t.example/a b.jpg '), 'https://t.example/a%20b.jpg');
+    test('listed hosts pass as https; everything else is refused', () => {
+      assert.equal(imageTarget('https://i.pinimg.com/a.jpg'), 'https://i.pinimg.com/a.jpg');
+      assert.equal(imageTarget('http://i.pinimg.com/a.jpg'), 'https://i.pinimg.com/a.jpg');
+      assert.equal(imageTarget('//i.pinimg.com/a.jpg'), 'https://i.pinimg.com/a.jpg');
+      assert.equal(imageTarget('https://I.PINIMG.COM/a.jpg'), 'https://i.pinimg.com/a.jpg');
+      assert.equal(imageTarget('  https://i.pinimg.com/a b.jpg '), 'https://i.pinimg.com/a%20b.jpg');
       const refused = [
         'javascript:alert(1)', 'data:image/png;base64,AAAA', '/image_proxy?url=x', 'a.jpg', '', '   ',
-        'https://user:pw@t.example/a.jpg', 'https://amnesia.tax/x.png', 'https://search-origin.amnesia.tax/search',
+        'https://user:pw@i.pinimg.com/a.jpg', 'https://i.pinimg.com:8443/a.jpg', 'https://amnesia.tax/x.png', 'https://search-origin.amnesia.tax/search',
         'https://API.AMNESIA.TAX./img', null, undefined, 42, {},
       ];
       for (const bad of refused) assert.equal(imageTarget(bad), null, String(bad));
     });
 
-    test('loopback, private, link-local and other non-public hosts are refused', () => {
+    test('loopback, private, link-local and every other unlisted host is refused', () => {
       const refused = [
         'http://127.0.0.1:8081/stats', 'http://127.1/x.png', 'http://2130706433/x.png', 'http://0x7f.0.0.1/x.png',
         'http://0.0.0.0/x.png', 'http://10.0.0.5/x.png', 'http://172.16.0.1/x.png', 'http://172.31.255.255/x.png',
@@ -603,18 +591,26 @@ describe('image proxy', () => {
         'http://printer.local/x.png', 'http://metadata.google.internal/x.png', 'http://nas.home.arpa/x.png',
       ];
       for (const bad of refused) assert.equal(imageTarget(bad), null, bad);
-      for (const ok of ['http://93.184.216.34/x.png', 'http://172.32.0.1/x.png', 'https://upload.wikimedia.org/a.jpg']) {
-        assert.equal(imageTarget(ok), ok);
-      }
+      // Unlisted public hosts too, and look-alikes of listed ones: a name an
+      // attacker registers is a name whose DNS the attacker controls.
+      for (const bad of [
+        'http://93.184.216.34/x.png', 'https://images.example/x.png', 'https://rebind.example/x.png',
+        'https://i.pinimg.com.evil.example/x.png', 'https://evil-i.pinimg.com/x.png', 'https://x.i.pinimg.com/a.jpg',
+        'https://encrypted-tbn0.gstatic.com.evil.example/x', 'https://tse1.mm.bing.net.evil.example/x',
+      ]) assert.equal(imageTarget(bad), null, bad);
+      for (const ok of [
+        'https://upload.wikimedia.org/a.jpg', 'https://encrypted-tbn0.gstatic.com/images?q=tbn:x', 'https://tse2.mm.bing.net/th?id=x',
+        'https://ts1.explicit.bing.net/th?id=x', 'https://live.staticflickr.com/65535/a_m.jpg', 'https://external-content.duckduckgo.com/iu/?u=x',
+      ]) assert.equal(imageTarget(ok), ok, ok);
     });
   });
 
   describe('rewriting /search answers', () => {
     test('every image field becomes a signed /img URL on the gate; refused values are blanked', async () => {
       const results = [
-        { url: 'https://a.example/', thumbnail_src: 'https://t.example/a.jpg', img_src: 'https://o.example/a.jpg' },
-        { url: 'https://b.example/', thumbnail: '//t.example/b.jpg' },
-        { url: 'https://c.example/', thumbnail_src: 'javascript:alert(1)', img_src: 'https://o.example/c.jpg' },
+        { url: 'https://a.example/', thumbnail_src: 'https://i.pinimg.com/a.jpg', img_src: 'https://upload.wikimedia.org/a.jpg' },
+        { url: 'https://b.example/', thumbnail: '//i.pinimg.com/b.jpg' },
+        { url: 'https://c.example/', thumbnail_src: 'javascript:alert(1)', img_src: 'https://upload.wikimedia.org/c.jpg' },
         { url: 'https://d.example/', img_src: 'https://api.amnesia.tax/session' },
         { url: 'https://e.example/', title: 'no image' },
       ];
@@ -622,11 +618,11 @@ describe('image proxy', () => {
       const r = await call('/search?q=cats&categories=images&format=json', { headers: { cookie: await validCookie() } });
       assert.equal(r.status, 200);
       const out = r.json().results;
-      assert.equal(out[0].thumbnail_src, API + (await signedPath('https://t.example/a.jpg')));
-      assert.equal(out[0].img_src, API + (await signedPath('https://o.example/a.jpg')));
-      assert.equal(out[1].thumbnail, API + (await signedPath('https://t.example/b.jpg')));
+      assert.equal(out[0].thumbnail_src, API + (await signedPath('https://i.pinimg.com/a.jpg')));
+      assert.equal(out[0].img_src, API + (await signedPath('https://upload.wikimedia.org/a.jpg')));
+      assert.equal(out[1].thumbnail, API + (await signedPath('https://i.pinimg.com/b.jpg')));
       assert.equal(out[2].thumbnail_src, '');
-      assert.equal(out[2].img_src, API + (await signedPath('https://o.example/c.jpg')));
+      assert.equal(out[2].img_src, API + (await signedPath('https://upload.wikimedia.org/c.jpg')));
       assert.equal(out[3].img_src, '');
       assert.deepEqual(out[4], results[4]);
       assert.equal(out[0].url, 'https://a.example/', 'links are left alone');
@@ -638,7 +634,7 @@ describe('image proxy', () => {
     });
 
     test('the edge copy carries the signed URLs, so a hit needs no rewrite', async () => {
-      origin = jsonOrigin({ query: 'q', results: [{ url: 'https://a.example/', thumbnail: 'https://t.example/a.jpg' }] });
+      origin = jsonOrigin({ query: 'q', results: [{ url: 'https://a.example/', thumbnail: 'https://i.pinimg.com/a.jpg' }] });
       const cookie = await validCookie();
       const first = await call('/search?q=q&categories=images', { headers: { cookie } });
       const second = await call('/search?q=q&categories=images', { headers: { cookie } });
@@ -655,9 +651,9 @@ describe('image proxy', () => {
     });
 
     test('autocomplete answers are not touched', async () => {
-      origin = jsonOrigin(['q', ['https://t.example/a.jpg']]);
+      origin = jsonOrigin(['q', ['https://i.pinimg.com/a.jpg']]);
       const r = await call('/autocompleter?q=q', { headers: { cookie: await validCookie() } });
-      assert.deepEqual(r.json(), ['q', ['https://t.example/a.jpg']]);
+      assert.deepEqual(r.json(), ['q', ['https://i.pinimg.com/a.jpg']]);
     });
   });
 
@@ -731,7 +727,7 @@ describe('image proxy', () => {
         '/img?u=' + encodeURIComponent(HOST + '/b.png') + '&s=' + good,
         '/img?u=' + encodeURIComponent(HOST + '/a.png') + '&s=' + flipped,
         await signedPath(HOST + '/a.png', 'another-secret'),
-        await selfSigned('//images.example/a.png'),
+        await selfSigned('//live.staticflickr.com/a.png'),
         await selfSigned('https://search-origin.amnesia.tax/search?q=x'),
       ];
       for (const p of paths) {
@@ -838,32 +834,8 @@ describe('image proxy', () => {
       assert.equal(calls.length, 6, 'the first fetch plus five redirects, then it stops');
     });
 
-    test('a public-looking name that resolves inward is refused before it is fetched', async () => {
+    test('a redirect to an unlisted host is refused at that hop, whatever it resolves to', async () => {
       const cookie = await validCookie();
-      serveImage();
-      const ok = await call(await signedPath(HOST + '/a.png'), { headers: { cookie } });
-      assert.equal(ok.status, 200);
-      assert.deepEqual(dnsCalls.sort(), ['images.example/A', 'images.example/AAAA']);
-
-      for (const ips of [['169.254.169.254'], ['10.0.0.5'], ['93.184.216.34', '127.0.0.1'], ['93.184.216.34', 'fd00::1'], ['::1'], []]) {
-        calls = [];
-        dns['images.example'] = ips;
-        const r = await call(await signedPath(HOST + '/p' + ips.length + ips.join('').replace(/\W/g, '') + '.png'), { headers: { cookie } });
-        assert.equal(r.status, 502, ips.join(','));
-        assert.equal(r.json().error, 'image_refused');
-        assert.equal(imageCalls().length, 0, 'the image host is never contacted');
-      }
-
-      dns['images.example'] = new Error('resolver down');
-      const down = await call(await signedPath(HOST + '/dns-down.png'), { headers: { cookie } });
-      assert.equal(down.status, 502);
-      assert.equal(down.json().error, 'image_unreachable');
-      assert.equal(cache.size, 1, 'only the first, public image was cached');
-    });
-
-    test('a redirect to a name that resolves inward is refused at that hop', async () => {
-      const cookie = await validCookie();
-      dns['rebind.example'] = ['192.168.1.1'];
       origin = (url) =>
         url === HOST + '/r.png'
           ? new Response(null, { status: 302, headers: { location: 'https://rebind.example/x.png' } })
@@ -872,17 +844,15 @@ describe('image proxy', () => {
       assert.equal(r.status, 502);
       assert.equal(r.json().error, 'image_refused');
       assert.deepEqual(calls.map((c) => c.url), [HOST + '/r.png']);
-      assert.ok(dnsCalls.includes('rebind.example/A'));
-    });
 
-    test('isPublicIPv6 accepts global unicast and nothing else', () => {
-      for (const ip of ['2606:4700::1111', '2a00:1450:4001:82a::200e', '2002:5db8:d822::1', '2606:2800:220:1:248:1893:25c8:1946']) {
-        assert.equal(isPublicIPv6(ip), true, ip);
-      }
-      for (const ip of ['::', '::1', 'fe80::1', 'fd00::1', 'fc00::1', 'ff02::1', '2001:db8::1', '2001::1', '::ffff:127.0.0.1',
-        '64:ff9b::7f00:1', '2002:7f00:1::1', '2002:a00:1::1', '1:2:3:4:5:6:7:8:9', '2606::4700::1', 'nonsense', '']) {
-        assert.equal(isPublicIPv6(ip), false, ip);
-      }
+      calls = [];
+      origin = (url) =>
+        url === HOST + '/r2.png'
+          ? new Response(null, { status: 302, headers: { location: 'https://upload.wikimedia.org/x.png' } })
+          : new Response(PNG, { status: 200, headers: { 'content-type': 'image/png' } });
+      const ok = await call(await signedPath(HOST + '/r2.png'), { headers: { cookie } });
+      assert.equal(ok.status, 200, 'a redirect to another listed CDN is followed');
+      assert.deepEqual(calls.map((c) => c.url), [HOST + '/r2.png', 'https://upload.wikimedia.org/x.png']);
     });
 
     test('readCapped stops at the cap and joins what came before it', async () => {
