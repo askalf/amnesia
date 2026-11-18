@@ -578,6 +578,22 @@ describe('image proxy', () => {
       ];
       for (const bad of refused) assert.equal(imageTarget(bad), null, String(bad));
     });
+
+    test('loopback, private, link-local and other non-public hosts are refused', () => {
+      const refused = [
+        'http://127.0.0.1:8081/stats', 'http://127.1/x.png', 'http://2130706433/x.png', 'http://0x7f.0.0.1/x.png',
+        'http://0.0.0.0/x.png', 'http://10.0.0.5/x.png', 'http://172.16.0.1/x.png', 'http://172.31.255.255/x.png',
+        'http://192.168.1.1/x.png', 'http://169.254.169.254/latest/meta-data/', 'http://100.64.0.1/x.png',
+        'http://198.18.0.1/x.png', 'http://224.0.0.1/x.png', 'http://255.255.255.255/x.png',
+        'http://[::1]/x.png', 'http://[fd00::1]/x.png', 'http://[fe80::1]/x.png', 'http://[::ffff:127.0.0.1]/x.png',
+        'http://localhost/x.png', 'http://LOCALHOST./x.png', 'http://a.localhost/x.png', 'http://intranet/x.png',
+        'http://printer.local/x.png', 'http://metadata.google.internal/x.png', 'http://nas.home.arpa/x.png',
+      ];
+      for (const bad of refused) assert.equal(imageTarget(bad), null, bad);
+      for (const ok of ['http://93.184.216.34/x.png', 'http://172.32.0.1/x.png', 'https://upload.wikimedia.org/a.jpg']) {
+        assert.equal(imageTarget(ok), ok);
+      }
+    });
   });
 
   describe('rewriting /search answers', () => {
@@ -764,6 +780,49 @@ describe('image proxy', () => {
       assert.equal(streamed.status, 502);
       assert.equal(streamed.json().error, 'image_too_large');
       assert.equal(cache.size, 0);
+    });
+
+    test('a private thumbnail in a /search answer is blanked, never signed', async () => {
+      origin = jsonOrigin({ query: 'q', results: [{ url: 'https://a.example/', thumbnail_src: 'http://169.254.169.254/latest/meta-data/' }] });
+      const r = await call('/search?q=q&categories=images', { headers: { cookie: await validCookie() } });
+      assert.equal(r.json().results[0].thumbnail_src, '');
+    });
+
+    test('redirects are followed by hand, and each hop must pass imageTarget', async () => {
+      const cookie = await validCookie();
+      const redirectTo = (location) => {
+        origin = (url) =>
+          url === HOST + '/r.png'
+            ? new Response(null, { status: 302, headers: { location } })
+            : new Response(PNG, { status: 200, headers: { 'content-type': 'image/png' } });
+      };
+      for (const location of [
+        'http://127.0.0.1/x.png', 'http://169.254.169.254/latest/meta-data/', 'http://[::1]/x.png',
+        'http://localhost/x.png', 'https://search-origin.amnesia.tax/search?q=x', 'javascript:alert(1)', '',
+      ]) {
+        calls = [];
+        redirectTo(location);
+        const r = await call(await signedPath(HOST + '/r.png'), { headers: { cookie } });
+        assert.equal(r.status, 502, location);
+        assert.equal(r.json().error, 'image_refused');
+        assert.deepEqual(calls.map((c) => c.url), [HOST + '/r.png'], 'the refused hop is never fetched');
+        assert.equal(calls[0].init.redirect, 'manual');
+      }
+      assert.equal(cache.size, 0);
+
+      calls = [];
+      redirectTo('/a.png');
+      const ok = await call(await signedPath(HOST + '/r.png'), { headers: { cookie } });
+      assert.equal(ok.status, 200);
+      assert.deepEqual(calls.map((c) => c.url), [HOST + '/r.png', HOST + '/a.png']);
+      assert.equal(calls[1].init.redirect, 'manual');
+
+      calls = [];
+      origin = (url) => new Response(null, { status: 302, headers: { location: url + 'x' } });
+      const loop = await call(await signedPath(HOST + '/loop.png'), { headers: { cookie } });
+      assert.equal(loop.status, 502);
+      assert.equal(loop.json().error, 'image_refused');
+      assert.equal(calls.length, 6, 'the first fetch plus five redirects, then it stops');
     });
 
     test('readCapped stops at the cap and joins what came before it', async () => {

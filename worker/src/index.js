@@ -27,8 +27,9 @@
  * a URL it signed itself. The signature is what keeps /img from being an open
  * proxy: it serves the images real searches returned, nothing a caller makes
  * up. The host sees a Cloudflare address and the CF-Worker header naming this
- * zone, never the visitor. Anything that isn't an http(s) URL, or that points
- * back into amnesia.tax, is blanked rather than passed through, so the page
+ * zone, never the visitor. Anything that isn't an http(s) URL, that points
+ * back into amnesia.tax, or that names a loopback, private or otherwise
+ * non-public host, is blanked rather than passed through, so the page
  * never loads a thumbnail straight from its host. Only raster types are
  * served (no SVG), under IMG_MAX_BYTES, with a sandbox CSP and nosniff;
  * accepted images sit in the colo's edge cache for IMG_CACHE_TTL, keyed on
@@ -98,6 +99,7 @@ export const IMG_FIELDS = ["img_src", "thumbnail_src", "thumbnail"];
 export const IMG_MAX_BYTES = 8 * 1024 * 1024; // thumbnails are KBs; an original fallback can be MBs
 const IMG_CACHE_TTL = 86400; // 1d: an image at a given URL rarely changes
 const IMG_TIMEOUT_MS = 8000;
+const IMG_MAX_REDIRECTS = 5;
 const IMG_UA = "Mozilla/5.0 (compatible; amnesia-image-proxy/1.0; +https://amnesia.tax)";
 // Raster only: an SVG is a document that can carry script.
 const IMG_TYPES = /^image\/(avif|webp|png|apng|jpeg|jpg|pjpeg|gif|bmp|x-icon|vnd\.microsoft\.icon)$/;
@@ -359,8 +361,8 @@ export function cacheable(text, isAc, normalizedQ) {
 
 // The absolute http(s) URL the proxy may fetch for a result's image value, or
 // null. Protocol-relative values ("//host/x.jpg") count as https; relative
-// paths, other schemes, credentials in the URL, and anything on amnesia.tax
-// itself do not.
+// paths, other schemes, credentials in the URL, anything on amnesia.tax
+// itself, and any host isPublicHost refuses do not.
 export function imageTarget(value) {
   if (typeof value !== "string") return null;
   let s = value.trim();
@@ -370,8 +372,37 @@ export function imageTarget(value) {
   try { u = new URL(s); } catch (e) { return null; }
   if (u.protocol !== "http:" && u.protocol !== "https:") return null;
   if (u.username || u.password) return null;
-  if (isOwnHost(u.hostname)) return null;
+  if (isOwnHost(u.hostname) || !isPublicHost(u.hostname)) return null;
   return u.href;
+}
+
+// False for a host the proxy must never be pointed at: every IPv6 literal,
+// IPv4 literals outside public unicast space (URL parsing has already turned
+// forms like 0x7f.1 or 2130706433 into dotted IPv4), single-label names, and
+// the suffixes that only resolve inside a network. A Worker has no resolver to
+// check where a public name points, so names are judged by their spelling and
+// every redirect hop is judged again in proxyImage.
+function isPublicHost(hostname) {
+  const h = hostname.toLowerCase().replace(/\.$/, "");
+  if (h.startsWith("[")) return false;
+  const v4 = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (v4) return isPublicIPv4(v4.slice(1).map(Number));
+  if (!h.includes(".")) return false;
+  return !/(^|\.)(localhost|localdomain|local|internal|intranet|lan|home\.arpa)$/.test(h);
+}
+
+function isPublicIPv4([a, b, c]) {
+  return !(
+    a === 0 || a === 10 || a === 127 || a >= 224 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 192 && b === 0 && (c === 0 || c === 2)) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    (a === 198 && b === 51 && c === 100) ||
+    (a === 203 && b === 0 && c === 113)
+  );
 }
 
 function isOwnHost(hostname) {
@@ -428,24 +459,40 @@ async function proxyImage(url, env, ctx, authorized, cors) {
 
   // Nothing of the visitor's goes upstream: no cookie, no client IP, no
   // referrer. Just the URL and a user agent that says what is asking.
+  // Redirects are followed here, at most IMG_MAX_REDIRECTS of them, and each
+  // Location must pass imageTarget before it is fetched, so a signed public
+  // URL can't bounce the fetch to a private address or into amnesia.tax.
+  const signal = AbortSignal.timeout(IMG_TIMEOUT_MS);
   let up;
-  try {
-    up = await fetch(target, {
-      method: "GET",
-      headers: {
-        accept: "image/avif,image/webp,image/png,image/jpeg,image/gif,image/*;q=0.8",
-        "user-agent": IMG_UA,
-      },
-      redirect: "follow",
-      signal: AbortSignal.timeout(IMG_TIMEOUT_MS),
-    });
-  } catch (e) {
-    return json({ error: "image_unreachable" }, 502, cors());
+  let next = target;
+  for (let hop = 0; ; hop++) {
+    try {
+      up = await fetch(next, {
+        method: "GET",
+        headers: {
+          accept: "image/avif,image/webp,image/png,image/jpeg,image/gif,image/*;q=0.8",
+          "user-agent": IMG_UA,
+        },
+        redirect: "manual",
+        signal,
+      });
+    } catch (e) {
+      return json({ error: "image_unreachable" }, 502, cors());
+    }
+    if (up.status < 300 || up.status > 399) break;
+    const location = up.headers.get("location");
+    cancelBody(up);
+    let to = null;
+    if (location) {
+      try { to = imageTarget(new URL(location, next).href); } catch (e) {}
+    }
+    if (!to || hop >= IMG_MAX_REDIRECTS) {
+      return json({ error: "image_refused" }, 502, cors());
+    }
+    next = to;
   }
-  let finalHost = "";
-  try { finalHost = up.url ? new URL(up.url).hostname : ""; } catch (e) {}
   const type = (up.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
-  if (!up.ok || !IMG_TYPES.test(type) || (finalHost && isOwnHost(finalHost))) {
+  if (!up.ok || !IMG_TYPES.test(type)) {
     cancelBody(up);
     return json({ error: "not_an_image" }, 502, cors());
   }
