@@ -366,16 +366,20 @@ export function cacheable(text, isAc, normalizedQ) {
 // list. Everything else (any other host, every IP literal) is refused, which
 // costs nothing visible: a refused thumbnail is blanked and its tile hidden.
 // An instance that turns on another image engine adds that engine's
-// thumbnail host here.
+// thumbnail host here. The icon engines (devicons, lucide) serve SVG from a
+// shared CDN, which /img would refuse as a type anyway.
 export const IMG_HOSTS = [
   /^encrypted-tbn\d\.gstatic\.com$/,             // Google Images
   /^tse?\d\.(mm|explicit)\.bing\.net$/,          // Bing Images
-  /^live\.staticflickr\.com$/,                    // Flickr, Openverse
+  /^(live|farm\d+|c\d)\.staticflickr\.com$/,      // Flickr, Openverse
+  /^api\.openverse\.org$/,                       // Openverse
   /^i\.pinimg\.com$/,                             // Pinterest
   /^(upload|thumb)\.wikimedia\.org$/,              // Wikimedia Commons
   /^external-content\.duckduckgo\.com$/,          // DuckDuckGo Images
   /^imgs\.search\.brave\.com$/,                   // Brave Images
   /^images\.(unsplash|pexels)\.com$/,              // Unsplash, Pexels
+  /^www\.artic\.edu$/,                            // Art Institute of Chicago (IIIF)
+  /^images-wixmp-[0-9a-f]+\.wixmp\.com$/,         // DeviantArt
 ];
 
 // The https URL the proxy may fetch for a result's image value, or null.

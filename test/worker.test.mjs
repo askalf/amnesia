@@ -601,7 +601,13 @@ describe('image proxy', () => {
       for (const ok of [
         'https://upload.wikimedia.org/a.jpg', 'https://encrypted-tbn0.gstatic.com/images?q=tbn:x', 'https://tse2.mm.bing.net/th?id=x',
         'https://ts1.explicit.bing.net/th?id=x', 'https://live.staticflickr.com/65535/a_m.jpg', 'https://external-content.duckduckgo.com/iu/?u=x',
+        'https://farm5.staticflickr.com/1/a.jpg', 'https://api.openverse.org/v1/images/x/thumb/', 'https://imgs.search.brave.com/x',
+        'https://images.unsplash.com/photo-1?w=400', 'https://images.pexels.com/photos/1/a.jpeg',
+        'https://www.artic.edu/iiif/2/2d484387-2509-5e8e-2c43-22f9981972eb/full/200,/0/default.jpg',
+        'https://images-wixmp-ed30a86b8c4ca887773594c2.wixmp.com/f/a.jpg',
       ]) assert.equal(imageTarget(ok), ok, ok);
+      for (const bad of ['https://artic.edu.evil.example/x.jpg', 'https://images-wixmp-x.wixmp.com.evil.example/a.jpg', 'https://wixmp.com/a.jpg'])
+        assert.equal(imageTarget(bad), null, bad);
     });
   });
 
@@ -631,6 +637,22 @@ describe('image proxy', () => {
           if (res[f]) assert.ok(res[f].startsWith(API + '/img?'), res[f]);
         }
       }
+    });
+
+    test('each enabled image engine keeps its thumbnails (the URL shapes they return)', async () => {
+      const thumbs = [
+        'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ',
+        'https://tse3.mm.bing.net/th/id/OIP.x?pid=Api',
+        'https://live.staticflickr.com/65535/1_2_n.jpg',
+        'https://i.pinimg.com/236x/aa/bb/cc.jpg',
+        'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/C.jpg/200px-C.jpg',
+        'https://www.artic.edu/iiif/2/2d484387-2509-5e8e-2c43-22f9981972eb/full/400,/0/default.jpg',
+      ];
+      const out = JSON.parse(await proxifyImages(JSON.stringify({ results: thumbs.map((t) => ({ thumbnail_src: t })) }), API, 's'));
+      out.results.forEach((r, i) => {
+        assert.ok(r.thumbnail_src.startsWith(API + '/img?'), thumbs[i]);
+        assert.equal(new URL(r.thumbnail_src).searchParams.get('u'), thumbs[i]);
+      });
     });
 
     test('the edge copy carries the signed URLs, so a hit needs no rewrite', async () => {
