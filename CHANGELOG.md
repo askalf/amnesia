@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   signed, only to a session, and only raster types. The site's CSP now
   allows images from the gate alone.
 
+### Removed
+- **The Cloudflare Web Analytics beacon.** It contradicted "no analytics":
+  the page loaded a third-party script and reported page views. It is gone
+  from the page, and the CSP no longer allows its two origins.
+
 ### Fixed
 - **Back and Forward work.** Loading a `?q=` link or pressing Back re-pushed
   the search into history, so a link left a duplicate entry, Back wiped the
