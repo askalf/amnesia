@@ -6,9 +6,9 @@
 #   - the search API fetch       : https://api.amnesia.tax
 #   - inline <style> + <script>  : by SHA-256 hash, no 'unsafe-inline' (scripts/csp-hashes.mjs --write)
 #   - favicon (data: svg) + og   : data: / 'self'
-#   - result thumbnails          : https: (SearXNG's JSON output carries each
-#                                   image's own URL; image_proxy only rewrites its
-#                                   HTML pages, so there is nothing to tighten to)
+#   - result thumbnails          : https://api.amnesia.tax only (the gate rewrites
+#                                   each image URL to its signed /img proxy, so no
+#                                   image host ever sees the visitor's IP)
 /*
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
   X-Content-Type-Options: nosniff
@@ -16,7 +16,7 @@
   Referrer-Policy: same-origin
   Permissions-Policy: geolocation=(), microphone=(), camera=(), payment=(), usb=(), interest-cohort=()
   Cross-Origin-Opener-Policy: same-origin
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-daIdyj9OEjt1BD4YZ4E3iWSuVXFl7bDCeP+wfM4OAok=' https://challenges.cloudflare.com https://static.cloudflareinsights.com; style-src 'self' 'sha256-kf65YGE17RKwx+m5uoIbUiZlrtKF1ViXiqCopVFmKx0='; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://api.amnesia.tax https://challenges.cloudflare.com https://cloudflareinsights.com; frame-src https://challenges.cloudflare.com; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-daIdyj9OEjt1BD4YZ4E3iWSuVXFl7bDCeP+wfM4OAok=' https://challenges.cloudflare.com; style-src 'self' 'sha256-kf65YGE17RKwx+m5uoIbUiZlrtKF1ViXiqCopVFmKx0='; font-src 'self'; img-src 'self' data: https://api.amnesia.tax; connect-src 'self' https://api.amnesia.tax https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests
 
 # The SPA only changes on deploy, and Pages purges its cache then — let the
 # edge serve it without an origin revalidation per request (was max-age=0).

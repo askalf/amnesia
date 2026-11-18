@@ -8,7 +8,7 @@
 
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import worker, { buildCookie, hmac, verifySession, sessionTimes, COOKIE_NAME } from '../worker/src/index.js';
+import worker, { buildCookie, hmac, verifySession, sessionTimes, COOKIE_NAME, imageTarget, imageSignature, proxifyImages, readCapped, IMG_MAX_BYTES } from '../worker/src/index.js';
 
 const SITE = 'https://amnesia.tax';
 const API = 'https://api.amnesia.tax';
@@ -547,5 +547,341 @@ describe('origin secret', () => {
     const r = await call('/search?q=x', { env, headers: { cookie: await validCookie() } });
     assert.equal(r.status, 200);
     assert.equal(originCalls()[0].init.headers.get('x-amnesia-gate'), null);
+  });
+});
+
+describe('image proxy', () => {
+  const HOST = 'https://live.staticflickr.com';
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+  const signedPath = async (target, secret = ENV.SESSION_SECRET) =>
+    '/img?' + new URLSearchParams({ u: target, s: await imageSignature(secret, target) }).toString();
+  const imageCalls = () => calls.filter((c) => originOf(c.url) === HOST);
+  const serveImage = (type = 'image/png', body = PNG, extra = {}) => {
+    origin = (url) =>
+      originOf(url) === HOST
+        ? new Response(body, { status: 200, headers: { 'content-type': type, ...extra } })
+        : new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const jsonOrigin = (data) => () =>
+    new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
+
+  describe('imageTarget', () => {
+    test('listed hosts pass as https; everything else is refused', () => {
+      assert.equal(imageTarget('https://i.pinimg.com/a.jpg'), 'https://i.pinimg.com/a.jpg');
+      assert.equal(imageTarget('http://i.pinimg.com/a.jpg'), 'https://i.pinimg.com/a.jpg');
+      assert.equal(imageTarget('//i.pinimg.com/a.jpg'), 'https://i.pinimg.com/a.jpg');
+      assert.equal(imageTarget('https://I.PINIMG.COM/a.jpg'), 'https://i.pinimg.com/a.jpg');
+      assert.equal(imageTarget('  https://i.pinimg.com/a b.jpg '), 'https://i.pinimg.com/a%20b.jpg');
+      const refused = [
+        'javascript:alert(1)', 'data:image/png;base64,AAAA', '/image_proxy?url=x', 'a.jpg', '', '   ',
+        'https://user:pw@i.pinimg.com/a.jpg', 'https://i.pinimg.com:8443/a.jpg', 'https://amnesia.tax/x.png', 'https://search-origin.amnesia.tax/search',
+        'https://API.AMNESIA.TAX./img', null, undefined, 42, {},
+      ];
+      for (const bad of refused) assert.equal(imageTarget(bad), null, String(bad));
+    });
+
+    test('loopback, private, link-local and every other unlisted host is refused', () => {
+      const refused = [
+        'http://127.0.0.1:8081/stats', 'http://127.1/x.png', 'http://2130706433/x.png', 'http://0x7f.0.0.1/x.png',
+        'http://0.0.0.0/x.png', 'http://10.0.0.5/x.png', 'http://172.16.0.1/x.png', 'http://172.31.255.255/x.png',
+        'http://192.168.1.1/x.png', 'http://169.254.169.254/latest/meta-data/', 'http://100.64.0.1/x.png',
+        'http://198.18.0.1/x.png', 'http://224.0.0.1/x.png', 'http://255.255.255.255/x.png',
+        'http://[::1]/x.png', 'http://[fd00::1]/x.png', 'http://[fe80::1]/x.png', 'http://[::ffff:127.0.0.1]/x.png',
+        'http://localhost/x.png', 'http://LOCALHOST./x.png', 'http://a.localhost/x.png', 'http://intranet/x.png',
+        'http://printer.local/x.png', 'http://metadata.google.internal/x.png', 'http://nas.home.arpa/x.png',
+      ];
+      for (const bad of refused) assert.equal(imageTarget(bad), null, bad);
+      // Unlisted public hosts too, and look-alikes of listed ones: a name an
+      // attacker registers is a name whose DNS the attacker controls.
+      for (const bad of [
+        'http://93.184.216.34/x.png', 'https://images.example/x.png', 'https://rebind.example/x.png',
+        'https://i.pinimg.com.evil.example/x.png', 'https://evil-i.pinimg.com/x.png', 'https://x.i.pinimg.com/a.jpg',
+        'https://encrypted-tbn0.gstatic.com.evil.example/x', 'https://tse1.mm.bing.net.evil.example/x',
+      ]) assert.equal(imageTarget(bad), null, bad);
+      for (const ok of [
+        'https://upload.wikimedia.org/a.jpg', 'https://encrypted-tbn0.gstatic.com/images?q=tbn:x', 'https://tse2.mm.bing.net/th?id=x',
+        'https://ts1.explicit.bing.net/th?id=x', 'https://live.staticflickr.com/65535/a_m.jpg', 'https://external-content.duckduckgo.com/iu/?u=x',
+        'https://farm5.staticflickr.com/1/a.jpg', 'https://api.openverse.org/v1/images/x/thumb/', 'https://imgs.search.brave.com/x',
+        'https://images.unsplash.com/photo-1?w=400', 'https://images.pexels.com/photos/1/a.jpeg',
+        'https://www.artic.edu/iiif/2/2d484387-2509-5e8e-2c43-22f9981972eb/full/200,/0/default.jpg',
+        'https://images-wixmp-ed30a86b8c4ca887773594c2.wixmp.com/f/a.jpg',
+      ]) assert.equal(imageTarget(ok), ok, ok);
+      for (const bad of ['https://artic.edu.evil.example/x.jpg', 'https://images-wixmp-x.wixmp.com.evil.example/a.jpg', 'https://wixmp.com/a.jpg'])
+        assert.equal(imageTarget(bad), null, bad);
+    });
+  });
+
+  describe('rewriting /search answers', () => {
+    test('every image field becomes a signed /img URL on the gate; refused values are blanked', async () => {
+      const results = [
+        { url: 'https://a.example/', thumbnail_src: 'https://i.pinimg.com/a.jpg', img_src: 'https://upload.wikimedia.org/a.jpg' },
+        { url: 'https://b.example/', thumbnail: '//i.pinimg.com/b.jpg' },
+        { url: 'https://c.example/', thumbnail_src: 'javascript:alert(1)', img_src: 'https://upload.wikimedia.org/c.jpg' },
+        { url: 'https://d.example/', img_src: 'https://api.amnesia.tax/session' },
+        { url: 'https://e.example/', title: 'no image' },
+      ];
+      origin = jsonOrigin({ query: 'cats', results });
+      const r = await call('/search?q=cats&categories=images&format=json', { headers: { cookie: await validCookie() } });
+      assert.equal(r.status, 200);
+      const out = r.json().results;
+      assert.equal(out[0].thumbnail_src, API + (await signedPath('https://i.pinimg.com/a.jpg')));
+      assert.equal(out[0].img_src, API + (await signedPath('https://upload.wikimedia.org/a.jpg')));
+      assert.equal(out[1].thumbnail, API + (await signedPath('https://i.pinimg.com/b.jpg')));
+      assert.equal(out[2].thumbnail_src, '');
+      assert.equal(out[2].img_src, API + (await signedPath('https://upload.wikimedia.org/c.jpg')));
+      assert.equal(out[3].img_src, '');
+      assert.deepEqual(out[4], results[4]);
+      assert.equal(out[0].url, 'https://a.example/', 'links are left alone');
+      for (const res of out) {
+        for (const f of ['img_src', 'thumbnail_src', 'thumbnail']) {
+          if (res[f]) assert.ok(res[f].startsWith(API + '/img?'), res[f]);
+        }
+      }
+    });
+
+    test('each enabled image engine keeps its thumbnails (the URL shapes they return)', async () => {
+      const thumbs = [
+        'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ',
+        'https://tse3.mm.bing.net/th/id/OIP.x?pid=Api',
+        'https://live.staticflickr.com/65535/1_2_n.jpg',
+        'https://i.pinimg.com/236x/aa/bb/cc.jpg',
+        'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/C.jpg/200px-C.jpg',
+        'https://www.artic.edu/iiif/2/2d484387-2509-5e8e-2c43-22f9981972eb/full/400,/0/default.jpg',
+      ];
+      const out = JSON.parse(await proxifyImages(JSON.stringify({ results: thumbs.map((t) => ({ thumbnail_src: t })) }), API, 's'));
+      out.results.forEach((r, i) => {
+        assert.ok(r.thumbnail_src.startsWith(API + '/img?'), thumbs[i]);
+        assert.equal(new URL(r.thumbnail_src).searchParams.get('u'), thumbs[i]);
+      });
+    });
+
+    test('the edge copy carries the signed URLs, so a hit needs no rewrite', async () => {
+      origin = jsonOrigin({ query: 'q', results: [{ url: 'https://a.example/', thumbnail: 'https://i.pinimg.com/a.jpg' }] });
+      const cookie = await validCookie();
+      const first = await call('/search?q=q&categories=images', { headers: { cookie } });
+      const second = await call('/search?q=q&categories=images', { headers: { cookie } });
+      assert.equal(originCalls().length, 1);
+      assert.equal(second.json().results[0].thumbnail, first.json().results[0].thumbnail);
+      assert.ok(second.json().results[0].thumbnail.startsWith(API + '/img?'));
+    });
+
+    test('a body with no image fields (or no JSON) passes through byte for byte', async () => {
+      const text = '{"query":"q",  "results":[{"url":"https://a.example/"}]}';
+      assert.equal(await proxifyImages(text, API, 's'), text);
+      assert.equal(await proxifyImages('not json', API, 's'), 'not json');
+      assert.equal(await proxifyImages('{"results":"x"}', API, 's'), '{"results":"x"}');
+    });
+
+    test('autocomplete answers are not touched', async () => {
+      origin = jsonOrigin(['q', ['https://i.pinimg.com/a.jpg']]);
+      const r = await call('/autocompleter?q=q', { headers: { cookie: await validCookie() } });
+      assert.deepEqual(r.json(), ['q', ['https://i.pinimg.com/a.jpg']]);
+    });
+  });
+
+  describe('/img', () => {
+    test('a signed URL with a session: fetched once, served with locked-down headers, then from the edge', async () => {
+      serveImage();
+      const path = await signedPath(HOST + '/a.png');
+      const cookie = await validCookie();
+      const r = await call(path, { headers: { cookie, 'cf-connecting-ip': '203.0.113.5', referer: SITE + '/?q=secret' } });
+      assert.equal(r.status, 200);
+      assert.equal(r.header('content-type'), 'image/png');
+      assert.equal(r.header('x-content-type-options'), 'nosniff');
+      assert.equal(r.header('content-security-policy'), "default-src 'none'; sandbox");
+      assert.equal(r.header('cross-origin-resource-policy'), 'same-site');
+      assert.equal(r.header('set-cookie'), null);
+      const [up, ...rest] = imageCalls();
+      assert.equal(rest.length, 0);
+      assert.equal(up.url, HOST + '/a.png');
+      const sent = Object.fromEntries(Object.entries(up.init.headers).map(([k, v]) => [k.toLowerCase(), v]));
+      assert.deepEqual(Object.keys(sent).sort(), ['accept', 'user-agent'], 'no cookie, client IP or referrer goes upstream');
+      assert.match(sent['user-agent'], /amnesia-image-proxy/);
+
+      const again = await call(path, { headers: { cookie } });
+      assert.equal(again.status, 200);
+      assert.equal(again.header('content-type'), 'image/png');
+      assert.equal(again.header('content-security-policy'), "default-src 'none'; sandbox");
+      assert.equal(imageCalls().length, 1, 'the second load is an edge hit');
+    });
+
+    test('the bytes served are the bytes fetched', async () => {
+      serveImage();
+      const ctx = { waitUntil: (p) => pending.push(p) };
+      const req = new Request(API + (await signedPath(HOST + '/a.png')), { headers: { cookie: await validCookie() } });
+      const res = await worker.fetch(req, ENV, ctx);
+      assert.deepEqual(new Uint8Array(await res.arrayBuffer()), PNG);
+      await Promise.all(pending.splice(0));
+    });
+
+    test('no session and no bridge → 401, nothing fetched', async () => {
+      serveImage();
+      const r = await call(await signedPath(HOST + '/a.png'), { headers: { 'cf-turnstile-token': 'tok' } });
+      assert.equal(r.status, 401);
+      assert.equal(r.json().error, 'session_required');
+      assert.equal(calls.length, 0, 'not even siteverify: an image never spends a Turnstile token');
+    });
+
+    test('a cookie signed with another secret, or a malformed one → 401', async () => {
+      serveImage();
+      const path = await signedPath(HOST + '/a.png');
+      assert.equal((await call(path, { headers: { cookie: await validCookie(60, 'another-secret') } })).status, 401);
+      assert.equal((await call(path, { headers: { cookie: `${COOKIE_NAME}=1.2.deadbeef` } })).status, 401);
+      assert.equal(imageCalls().length, 0);
+    });
+
+    test('a bridge IP needs no cookie', async () => {
+      serveImage();
+      const env = { ...ENV, BRIDGE_IPS: '198.51.100.1' };
+      const r = await call(await signedPath(HOST + '/a.png'), { env, headers: { 'cf-connecting-ip': '198.51.100.1' } });
+      assert.equal(r.status, 200);
+    });
+
+    test('anything the gate did not sign → 404, with or without a session', async () => {
+      serveImage();
+      const cookie = await validCookie();
+      const good = await imageSignature(ENV.SESSION_SECRET, HOST + '/a.png');
+      const flipped = (good[0] === '0' ? '1' : '0') + good.slice(1);
+      const selfSigned = async (u) => '/img?u=' + encodeURIComponent(u) + '&s=' + (await imageSignature(ENV.SESSION_SECRET, u));
+      const paths = [
+        '/img',
+        '/img?u=' + encodeURIComponent(HOST + '/a.png'),
+        '/img?u=' + encodeURIComponent(HOST + '/b.png') + '&s=' + good,
+        '/img?u=' + encodeURIComponent(HOST + '/a.png') + '&s=' + flipped,
+        await signedPath(HOST + '/a.png', 'another-secret'),
+        await selfSigned('//live.staticflickr.com/a.png'),
+        await selfSigned('https://search-origin.amnesia.tax/search?q=x'),
+      ];
+      for (const p of paths) {
+        assert.equal((await call(p, { headers: { cookie } })).status, 404, p);
+        // Same answer without a session: a probe can't tell a bad signature from a missing cookie.
+        assert.equal((await call(p)).status, 404, p);
+      }
+      assert.equal(calls.length, 0);
+    });
+
+    test('an image signature is not a session cookie signature', async () => {
+      const sig = await imageSignature(ENV.SESSION_SECRET, HOST + '/a.png');
+      assert.notEqual(sig, await hmac(ENV.SESSION_SECRET, HOST + '/a.png'));
+      assert.equal(await verifySession(`1.${nowS() + 60}.${sig}`, ENV.SESSION_SECRET), false);
+    });
+
+    test('SVG, HTML, a missing type or an upstream error → 502, nothing cached', async () => {
+      const cookie = await validCookie();
+      for (const type of ['image/svg+xml', 'text/html', 'application/octet-stream', '']) {
+        serveImage(type);
+        const r = await call(await signedPath(HOST + '/x-' + type.replace(/\W/g, '')), { headers: { cookie } });
+        assert.equal(r.status, 502, type);
+        assert.equal(r.json().error, 'not_an_image');
+      }
+      origin = () => new Response('nope', { status: 404, headers: { 'content-type': 'image/png' } });
+      assert.equal((await call(await signedPath(HOST + '/gone.png'), { headers: { cookie } })).status, 502);
+      origin = () => { throw new TypeError('network'); };
+      const down = await call(await signedPath(HOST + '/down.png'), { headers: { cookie } });
+      assert.equal(down.status, 502);
+      assert.equal(down.json().error, 'image_unreachable');
+      assert.equal(cache.size, 0);
+    });
+
+    test('an image type with parameters still counts; the served type is the bare one', async () => {
+      serveImage('image/JPEG; charset=binary');
+      const r = await call(await signedPath(HOST + '/a.jpg'), { headers: { cookie: await validCookie() } });
+      assert.equal(r.status, 200);
+      assert.equal(r.header('content-type'), 'image/jpeg');
+    });
+
+    test('over IMG_MAX_BYTES → 502 image_too_large, by declared length or by what actually arrives', async () => {
+      const cookie = await validCookie();
+      serveImage('image/png', PNG, { 'content-length': String(IMG_MAX_BYTES + 1) });
+      const declared = await call(await signedPath(HOST + '/big.png'), { headers: { cookie } });
+      assert.equal(declared.status, 502);
+      assert.equal(declared.json().error, 'image_too_large');
+
+      const chunk = new Uint8Array(1024 * 1024);
+      let sent = 0;
+      const stream = new ReadableStream({
+        pull(c) {
+          if (sent > IMG_MAX_BYTES) return c.close();
+          sent += chunk.byteLength;
+          c.enqueue(chunk);
+        },
+      });
+      serveImage('image/png', stream);
+      const streamed = await call(await signedPath(HOST + '/stream.png'), { headers: { cookie } });
+      assert.equal(streamed.status, 502);
+      assert.equal(streamed.json().error, 'image_too_large');
+      assert.equal(cache.size, 0);
+    });
+
+    test('a private thumbnail in a /search answer is blanked, never signed', async () => {
+      origin = jsonOrigin({ query: 'q', results: [{ url: 'https://a.example/', thumbnail_src: 'http://169.254.169.254/latest/meta-data/' }] });
+      const r = await call('/search?q=q&categories=images', { headers: { cookie: await validCookie() } });
+      assert.equal(r.json().results[0].thumbnail_src, '');
+    });
+
+    test('redirects are followed by hand, and each hop must pass imageTarget', async () => {
+      const cookie = await validCookie();
+      const redirectTo = (location) => {
+        origin = (url) =>
+          url === HOST + '/r.png'
+            ? new Response(null, { status: 302, headers: { location } })
+            : new Response(PNG, { status: 200, headers: { 'content-type': 'image/png' } });
+      };
+      for (const location of [
+        'http://127.0.0.1/x.png', 'http://169.254.169.254/latest/meta-data/', 'http://[::1]/x.png',
+        'http://localhost/x.png', 'https://search-origin.amnesia.tax/search?q=x', 'javascript:alert(1)', '',
+      ]) {
+        calls = [];
+        redirectTo(location);
+        const r = await call(await signedPath(HOST + '/r.png'), { headers: { cookie } });
+        assert.equal(r.status, 502, location);
+        assert.equal(r.json().error, 'image_refused');
+        assert.deepEqual(calls.map((c) => c.url), [HOST + '/r.png'], 'the refused hop is never fetched');
+        assert.equal(calls[0].init.redirect, 'manual');
+      }
+      assert.equal(cache.size, 0);
+
+      calls = [];
+      redirectTo('/a.png');
+      const ok = await call(await signedPath(HOST + '/r.png'), { headers: { cookie } });
+      assert.equal(ok.status, 200);
+      assert.deepEqual(calls.map((c) => c.url), [HOST + '/r.png', HOST + '/a.png']);
+      assert.equal(calls[1].init.redirect, 'manual');
+
+      calls = [];
+      origin = (url) => new Response(null, { status: 302, headers: { location: url + 'x' } });
+      const loop = await call(await signedPath(HOST + '/loop.png'), { headers: { cookie } });
+      assert.equal(loop.status, 502);
+      assert.equal(loop.json().error, 'image_refused');
+      assert.equal(calls.length, 6, 'the first fetch plus five redirects, then it stops');
+    });
+
+    test('a redirect to an unlisted host is refused at that hop, whatever it resolves to', async () => {
+      const cookie = await validCookie();
+      origin = (url) =>
+        url === HOST + '/r.png'
+          ? new Response(null, { status: 302, headers: { location: 'https://rebind.example/x.png' } })
+          : new Response(PNG, { status: 200, headers: { 'content-type': 'image/png' } });
+      const r = await call(await signedPath(HOST + '/r.png'), { headers: { cookie } });
+      assert.equal(r.status, 502);
+      assert.equal(r.json().error, 'image_refused');
+      assert.deepEqual(calls.map((c) => c.url), [HOST + '/r.png']);
+
+      calls = [];
+      origin = (url) =>
+        url === HOST + '/r2.png'
+          ? new Response(null, { status: 302, headers: { location: 'https://upload.wikimedia.org/x.png' } })
+          : new Response(PNG, { status: 200, headers: { 'content-type': 'image/png' } });
+      const ok = await call(await signedPath(HOST + '/r2.png'), { headers: { cookie } });
+      assert.equal(ok.status, 200, 'a redirect to another listed CDN is followed');
+      assert.deepEqual(calls.map((c) => c.url), [HOST + '/r2.png', 'https://upload.wikimedia.org/x.png']);
+    });
+
+    test('readCapped stops at the cap and joins what came before it', async () => {
+      const mk = (...parts) => new Response(new Blob(parts.map((p) => new Uint8Array(p)))).body;
+      assert.deepEqual(await readCapped(mk([1, 2], [3]), 3), new Uint8Array([1, 2, 3]));
+      assert.equal(await readCapped(mk([1, 2], [3, 4]), 3), null);
+      assert.deepEqual(await readCapped(null, 3), new Uint8Array(0));
+    });
   });
 });

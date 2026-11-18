@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Image hosts no longer see your IP.** The API gate rewrites each
+  thumbnail in a search answer to a signed `/img` URL on itself and fetches
+  the image for you, so Flickr, Pinterest, Wikimedia and Google's thumbnail
+  CDN see a Cloudflare address instead of yours. `/img` serves only URLs it
+  signed, only to a session cookie or a configured bridge IP, and only raster
+  types. It fetches only from the image engines' own thumbnail CDNs, a
+  fixed list of hostnames, on every redirect hop too. The site's CSP now allows images from the gate alone.
+
+### Removed
+- **The Cloudflare Web Analytics beacon.** It contradicted "no analytics":
+  the page loaded a third-party script and reported page views. It is gone
+  from the page, and the CSP no longer allows its two origins.
+
 ### Fixed
 - **Back and Forward work.** Loading a `?q=` link or pressing Back re-pushed
   the search into history, so a link left a duplicate entry, Back wiped the

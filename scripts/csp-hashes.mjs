@@ -56,11 +56,11 @@ export function cspHashes(html) {
 export function buildCsp({ script, style }) {
   return [
     `default-src 'self'`,
-    `script-src 'self' ${script.join(' ')} https://challenges.cloudflare.com https://static.cloudflareinsights.com`,
+    `script-src 'self' ${script.join(' ')} https://challenges.cloudflare.com`,
     `style-src 'self' ${style.join(' ')}`,
     `font-src 'self'`,
-    `img-src 'self' data: https:`,
-    `connect-src 'self' https://api.amnesia.tax https://challenges.cloudflare.com https://cloudflareinsights.com`,
+    `img-src 'self' data: https://api.amnesia.tax`,
+    `connect-src 'self' https://api.amnesia.tax https://challenges.cloudflare.com`,
     `frame-src https://challenges.cloudflare.com`,
     `base-uri 'self'`,
     `form-action 'self'`,

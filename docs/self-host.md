@@ -16,7 +16,7 @@ Open <http://localhost:8080>. (`127.0.0.1:` keeps it on this machine: a bare `-p
 - **Its own secret.** Each container generates a random `secret_key` on first start and keeps it in `/var/cache/searxng`, unless you pass `SEARXNG_SECRET`. The baked settings carry SearXNG's refuse-to-start placeholder, so a run that skips the entrypoint fails closed rather than using a key published in this repo.
 - **Unprivileged.** The container runs as SearXNG's `searxng` user (uid 977), not root.
 
-**Thumbnails still come from their hosts.** Image search shows each thumbnail from the URL the engine reported, so those hosts see the IP your browser uses, as on amnesia.tax. SearXNG's `image_proxy` is on, but it only rewrites SearXNG's own HTML pages; the JSON this page reads is never proxied.
+**Thumbnails still come from their hosts.** Image search shows each thumbnail from the URL the engine reported, so those hosts see the IP your browser uses. amnesia.tax proxies them through its API gate Worker, which the one container doesn't include. SearXNG's `image_proxy` is on, but it only rewrites SearXNG's own HTML pages; the JSON this page reads is never proxied.
 
 **The hardened run line.** Read-only root filesystem, no Linux capabilities, no privilege escalation, a named volume for the key, and bound to loopback. [`image.yml`](../.github/workflows/image.yml) runs the full smoke test against exactly this line on every change:
 
