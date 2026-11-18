@@ -59,7 +59,7 @@ export function buildCsp({ script, style }) {
     `script-src 'self' ${script.join(' ')} https://challenges.cloudflare.com https://static.cloudflareinsights.com`,
     `style-src 'self' ${style.join(' ')}`,
     `font-src 'self'`,
-    `img-src 'self' data: https:`,
+    `img-src 'self' data: https://api.amnesia.tax`,
     `connect-src 'self' https://api.amnesia.tax https://challenges.cloudflare.com https://cloudflareinsights.com`,
     `frame-src https://challenges.cloudflare.com`,
     `base-uri 'self'`,

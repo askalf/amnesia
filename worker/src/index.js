@@ -15,6 +15,24 @@
  *                        return {ok:true}. Lets the SPA warm the session on load.
  *   GET /search        — proxied to SearXNG; cookie OR token required.
  *   GET /autocompleter — same. Both carry an edge cache (below).
+ *   GET /img           — image proxy for result thumbnails (below). Cookie (or
+ *                        bridge IP) required, and the URL must carry the
+ *                        gate's own signature.
+ *
+ * Image proxy: SearXNG's JSON carries each thumbnail's own URL (gstatic,
+ * Flickr, Pinterest, Wikimedia, ...), so a page loading them directly shows
+ * every one of those hosts the visitor's IP. Before a /search answer leaves
+ * the gate, each img_src / thumbnail_src / thumbnail is rewritten to
+ * /img?u=<url>&s=<HMAC(SESSION_SECRET, "img:" + url)>, and /img fetches only
+ * a URL it signed itself. The signature is what keeps /img from being an open
+ * proxy: it serves the images real searches returned, nothing a caller makes
+ * up. The host sees a Cloudflare address and the CF-Worker header naming this
+ * zone, never the visitor. Anything that isn't an http(s) URL, or that points
+ * back into amnesia.tax, is blanked rather than passed through, so the page
+ * never loads a thumbnail straight from its host. Only raster types are
+ * served (no SVG), under IMG_MAX_BYTES, with a sandbox CSP and nosniff;
+ * accepted images sit in the colo's edge cache for IMG_CACHE_TTL, keyed on
+ * the signed URL alone. Like the search cache, that is shared per colo.
  *
  * Edge caches: the upstream ride (tunnel -> SearXNG -> engines via the VPN
  * proxy) costs ~1.5s for autocomplete and ~1-4s for a search. Both are
@@ -75,6 +93,14 @@ const SEARCH_CACHE_TTL = 180; // 3m — repeat searches at edge speed, results s
 // pageno; the rest are SearXNG search options a direct API caller may set.
 // Kept sorted: the cache key is built in this order.
 const SEARCH_PARAMS = ["categories", "format", "language", "pageno", "q", "safesearch", "time_range"];
+// Image proxy (see header).
+export const IMG_FIELDS = ["img_src", "thumbnail_src", "thumbnail"];
+export const IMG_MAX_BYTES = 8 * 1024 * 1024; // thumbnails are KBs; an original fallback can be MBs
+const IMG_CACHE_TTL = 86400; // 1d: an image at a given URL rarely changes
+const IMG_TIMEOUT_MS = 8000;
+const IMG_UA = "Mozilla/5.0 (compatible; amnesia-image-proxy/1.0; +https://amnesia.tax)";
+// Raster only: an SVG is a document that can carry script.
+const IMG_TYPES = /^image\/(avif|webp|png|apng|jpeg|jpg|pjpeg|gif|bmp|x-icon|vnd\.microsoft\.icon)$/;
 
 export default {
   async fetch(request, env, ctx) {
@@ -124,7 +150,8 @@ export default {
 
     const isSession = url.pathname === "/session";
     const isSearch = url.pathname === "/search" || url.pathname === "/autocompleter";
-    if (!isSession && !isSearch) {
+    const isImage = url.pathname === "/img";
+    if (!isSession && !isSearch && !isImage) {
       return json({ error: "not_found" }, 404, cors());
     }
 
@@ -146,6 +173,14 @@ export default {
     }
 
     const cookie = readCookie(request, COOKIE_NAME);
+
+    // Images ride the session a search already set up: no Turnstile here (an
+    // <img> can't send the header) and no renewal (searches renew it).
+    if (isImage) {
+      const ok = authorized || Boolean(cookie && (await verifySession(cookie, env.SESSION_SECRET)));
+      return proxyImage(url, env, ctx, ok, cors);
+    }
+
     if (!authorized && cookie && (await verifySession(cookie, env.SESSION_SECRET))) {
       authorized = true; // valid, unexpired session — skip Turnstile
       const { start, exp } = sessionTimes(cookie);
@@ -253,6 +288,8 @@ export default {
       } catch (e) {
         return json({ error: "origin_unreachable" }, 502, cors());
       }
+      // Before the edge copy, so a cache hit carries the signed URLs too.
+      if (!isAc) text = await proxifyImages(text, url.origin, env.SESSION_SECRET);
       const stored = cacheable(text, isAc, normalizedQ);
       if (stored !== null) {
         ctx.waitUntil(
@@ -316,6 +353,167 @@ export function cacheable(text, isAc, normalizedQ) {
     if ("query" in data) data.query = normalizedQ;
   }
   return JSON.stringify(data);
+}
+
+// ---- Image proxy ----------------------------------------------------------
+
+// The absolute http(s) URL the proxy may fetch for a result's image value, or
+// null. Protocol-relative values ("//host/x.jpg") count as https; relative
+// paths, other schemes, credentials in the URL, and anything on amnesia.tax
+// itself do not.
+export function imageTarget(value) {
+  if (typeof value !== "string") return null;
+  let s = value.trim();
+  if (!s) return null;
+  if (s.startsWith("//")) s = "https:" + s;
+  let u;
+  try { u = new URL(s); } catch (e) { return null; }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  if (u.username || u.password) return null;
+  if (isOwnHost(u.hostname)) return null;
+  return u.href;
+}
+
+function isOwnHost(hostname) {
+  const h = hostname.toLowerCase().replace(/\.$/, "");
+  return h === "amnesia.tax" || h.endsWith(".amnesia.tax");
+}
+
+export function imageSignature(secret, target) {
+  return hmac(secret, "img:" + target);
+}
+
+// A /search JSON body with every image field pointing at this gate's /img
+// route. A body that isn't JSON with a results list, or has no image fields,
+// comes back byte for byte.
+export async function proxifyImages(text, base, secret) {
+  let data;
+  try { data = JSON.parse(text); } catch (e) { return text; }
+  if (!data || !Array.isArray(data.results)) return text;
+  let changed = false;
+  for (const r of data.results) {
+    if (!r || typeof r !== "object") continue;
+    for (const field of IMG_FIELDS) {
+      const value = r[field];
+      if (value === undefined || value === null || value === "") continue;
+      const target = imageTarget(value);
+      r[field] = target
+        ? base + "/img?" + new URLSearchParams({ u: target, s: await imageSignature(secret, target) }).toString()
+        : "";
+      changed = true;
+    }
+  }
+  return changed ? JSON.stringify(data) : text;
+}
+
+async function proxyImage(url, env, ctx, authorized, cors) {
+  const u = url.searchParams.get("u");
+  const s = url.searchParams.get("s");
+  // Only a URL this gate signed, exactly as signed. A bad signature is a
+  // 404 like any other unknown resource, and checked before the session so a
+  // probe learns nothing about either.
+  const target = imageTarget(u);
+  if (!target || target !== u || !s || !timingSafeEqual(s, await imageSignature(env.SESSION_SECRET, target))) {
+    return json({ error: "not_found" }, 404, cors());
+  }
+  if (!authorized) {
+    return json({ error: "session_required" }, 401, cors());
+  }
+
+  const cacheKey = new Request(url.origin + "/img?" + new URLSearchParams({ u: target, s }).toString());
+  const hit = await caches.default.match(cacheKey);
+  if (hit) {
+    return new Response(hit.body, { status: 200, headers: imageHeaders(hit.headers.get("content-type")) });
+  }
+
+  // Nothing of the visitor's goes upstream: no cookie, no client IP, no
+  // referrer. Just the URL and a user agent that says what is asking.
+  let up;
+  try {
+    up = await fetch(target, {
+      method: "GET",
+      headers: {
+        accept: "image/avif,image/webp,image/png,image/jpeg,image/gif,image/*;q=0.8",
+        "user-agent": IMG_UA,
+      },
+      redirect: "follow",
+      signal: AbortSignal.timeout(IMG_TIMEOUT_MS),
+    });
+  } catch (e) {
+    return json({ error: "image_unreachable" }, 502, cors());
+  }
+  let finalHost = "";
+  try { finalHost = up.url ? new URL(up.url).hostname : ""; } catch (e) {}
+  const type = (up.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  if (!up.ok || !IMG_TYPES.test(type) || (finalHost && isOwnHost(finalHost))) {
+    cancelBody(up);
+    return json({ error: "not_an_image" }, 502, cors());
+  }
+  const declared = up.headers.get("content-length");
+  if (declared !== null && !(Number(declared) <= IMG_MAX_BYTES)) {
+    cancelBody(up);
+    return json({ error: "image_too_large" }, 502, cors());
+  }
+  let bytes;
+  try {
+    bytes = await readCapped(up.body, IMG_MAX_BYTES);
+  } catch (e) {
+    return json({ error: "image_unreachable" }, 502, cors());
+  }
+  if (bytes === null) {
+    return json({ error: "image_too_large" }, 502, cors());
+  }
+
+  ctx.waitUntil(
+    caches.default.put(
+      cacheKey,
+      new Response(bytes, {
+        status: 200,
+        headers: { "content-type": type, "cache-control": "public, max-age=" + IMG_CACHE_TTL },
+      })
+    )
+  );
+  return new Response(bytes, { status: 200, headers: imageHeaders(type) });
+}
+
+function imageHeaders(type) {
+  return {
+    "content-type": type || "application/octet-stream",
+    "cache-control": "private, max-age=" + IMG_CACHE_TTL,
+    "x-content-type-options": "nosniff",
+    "content-security-policy": "default-src 'none'; sandbox",
+    "cross-origin-resource-policy": "same-site",
+    "referrer-policy": "no-referrer",
+  };
+}
+
+function cancelBody(res) {
+  try { if (res.body) res.body.cancel(); } catch (e) {}
+}
+
+// The whole body, or null once it passes `max` bytes (the rest is never read).
+export async function readCapped(body, max) {
+  if (!body) return new Uint8Array(0);
+  const reader = body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      try { await reader.cancel(); } catch (e) {}
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.byteLength;
+  }
+  return out;
 }
 
 // ---- Turnstile siteverify -----------------------------------------------

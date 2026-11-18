@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Image hosts no longer see your IP.** The API gate rewrites each
+  thumbnail in a search answer to a signed `/img` URL on itself and fetches
+  the image for you, so Flickr, Pinterest, Wikimedia and Google's thumbnail
+  CDN see a Cloudflare address instead of yours. `/img` serves only URLs it
+  signed, only to a session, and only raster types. The site's CSP now
+  allows images from the gate alone.
+
 ### Fixed
 - **Back and Forward work.** Loading a `?q=` link or pressing Back re-pushed
   the search into history, so a link left a duplicate entry, Back wiped the
