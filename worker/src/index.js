@@ -30,7 +30,9 @@
  * zone, never the visitor. Anything that isn't an http(s) URL, that points
  * back into amnesia.tax, or that names a loopback, private or otherwise
  * non-public host, is blanked rather than passed through, so the page
- * never loads a thumbnail straight from its host. Only raster types are
+ * never loads a thumbnail straight from its host. Before each fetch, and
+ * each redirect hop, the host is resolved over DoH and refused unless every
+ * address is public. Only raster types are
  * served (no SVG), under IMG_MAX_BYTES, with a sandbox CSP and nosniff;
  * accepted images sit in the colo's edge cache for IMG_CACHE_TTL, keyed on
  * the signed URL alone. Like the search cache, that is shared per colo.
@@ -405,6 +407,71 @@ function isPublicIPv4([a, b, c]) {
   );
 }
 
+// imageTarget judges a host by its spelling; this judges where it points. A
+// Worker's fetch resolves names itself and never says where they landed, so
+// before each hop proxyImage resolves the name over DNS-over-HTTPS and refuses
+// it unless every A and AAAA answer is public unicast. The fetch resolves the
+// name again, so an answer that changes in between isn't caught here; the
+// check stops a name that plainly points inward, which is the case that
+// matters.
+const DOH = "https://cloudflare-dns.com/dns-query";
+
+export async function resolvesPublic(hostname, signal) {
+  const h = hostname.toLowerCase().replace(/\.$/, "");
+  if (h.startsWith("[") || /^\d+\.\d+\.\d+\.\d+$/.test(h)) return isPublicHost(h);
+  const answers = await Promise.all(["A", "AAAA"].map(async (type) => {
+    const r = await fetch(`${DOH}?name=${encodeURIComponent(h)}&type=${type}`, {
+      headers: { accept: "application/dns-json" },
+      signal,
+    });
+    if (!r.ok) throw new Error(`dns ${r.status}`);
+    const data = await r.json();
+    // 0 = an answer, 3 = no such name (no addresses, refused below).
+    if (data.Status !== 0 && data.Status !== 3) throw new Error(`dns status ${data.Status}`);
+    return Array.isArray(data.Answer) ? data.Answer : [];
+  }));
+  let addresses = 0;
+  for (const a of answers.flat()) {
+    if (a.type === 1) {
+      addresses++;
+      const p = String(a.data).split(".").map(Number);
+      if (p.length !== 4 || p.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false;
+      if (!isPublicIPv4(p)) return false;
+    } else if (a.type === 28) {
+      addresses++;
+      if (!isPublicIPv6(String(a.data))) return false;
+    }
+  }
+  return addresses > 0;
+}
+
+// Global unicast (2000::/3) only, minus documentation and Teredo; a 6to4
+// address is judged by the IPv4 address it carries.
+export function isPublicIPv6(text) {
+  const g = expandIPv6(text.toLowerCase());
+  if (!g) return false;
+  if ((g[0] & 0xe000) !== 0x2000) return false;
+  if (g[0] === 0x2001 && (g[1] === 0x0db8 || g[1] === 0)) return false;
+  if (g[0] === 0x2002) return isPublicIPv4([g[1] >> 8, g[1] & 0xff, g[2] >> 8, g[2] & 0xff]);
+  return true;
+}
+
+// Eight 16-bit groups, or null. Dotted (IPv4-embedding) forms are never
+// global unicast, so they don't parse.
+function expandIPv6(s) {
+  if (s.includes(".")) return null;
+  const halves = s.split("::");
+  if (halves.length > 2) return null;
+  const parts = (x) => (x ? x.split(":") : []);
+  const head = parts(halves[0]);
+  const tail = halves.length === 2 ? parts(halves[1]) : [];
+  const fill = halves.length === 2 ? 8 - head.length - tail.length : 0;
+  if (fill < 0 || (halves.length === 2 && fill === 0)) return null;
+  const groups = [...head, ...Array(fill).fill("0"), ...tail];
+  if (groups.length !== 8 || groups.some((x) => !/^[0-9a-f]{1,4}$/.test(x))) return null;
+  return groups.map((x) => parseInt(x, 16));
+}
+
 function isOwnHost(hostname) {
   const h = hostname.toLowerCase().replace(/\.$/, "");
   return h === "amnesia.tax" || h.endsWith(".amnesia.tax");
@@ -466,6 +533,13 @@ async function proxyImage(url, env, ctx, authorized, cors) {
   let up;
   let next = target;
   for (let hop = 0; ; hop++) {
+    let publicHost;
+    try {
+      publicHost = await resolvesPublic(new URL(next).hostname, signal);
+    } catch (e) {
+      return json({ error: "image_unreachable" }, 502, cors());
+    }
+    if (!publicHost) return json({ error: "image_refused" }, 502, cors());
     try {
       up = await fetch(next, {
         method: "GET",

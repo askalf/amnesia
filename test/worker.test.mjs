@@ -8,7 +8,7 @@
 
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import worker, { buildCookie, hmac, verifySession, sessionTimes, COOKIE_NAME, imageTarget, imageSignature, proxifyImages, readCapped, IMG_MAX_BYTES } from '../worker/src/index.js';
+import worker, { buildCookie, hmac, verifySession, sessionTimes, COOKIE_NAME, imageTarget, imageSignature, proxifyImages, readCapped, IMG_MAX_BYTES, isPublicIPv6 } from '../worker/src/index.js';
 
 const SITE = 'https://amnesia.tax';
 const API = 'https://api.amnesia.tax';
@@ -27,6 +27,8 @@ let cache; // caches.default contents: key URL -> { body, headers, key }
 let pending; // ctx.waitUntil promises
 let siteverify; // what Turnstile's siteverify answers (object, or an Error to throw)
 let origin; // (url, init) => Response for the SearXNG origin
+let dns; // hostname -> addresses (or an Error) for the DoH stub; unlisted names resolve public
+let dnsCalls; // "name/type" for every DoH lookup, kept out of calls
 
 const realFetch = globalThis.fetch;
 const realCaches = globalThis.caches;
@@ -35,6 +37,8 @@ beforeEach(() => {
   calls = [];
   cache = new Map();
   pending = [];
+  dns = {};
+  dnsCalls = [];
   siteverify = { success: true, hostname: 'amnesia.tax' };
   origin = () =>
     new Response(JSON.stringify({ query: 'q', results: [{ url: 'https://example.com/' }] }), {
@@ -43,6 +47,15 @@ beforeEach(() => {
     });
   globalThis.fetch = async (input, init = {}) => {
     const url = typeof input === 'string' ? input : input.url;
+    if (url.startsWith('https://cloudflare-dns.com/dns-query?')) {
+      const q = new URL(url).searchParams;
+      dnsCalls.push(q.get('name') + '/' + q.get('type'));
+      const ips = dns[q.get('name')] ?? ['93.184.216.34', '2606:2800:220:1:248:1893:25c8:1946'];
+      if (ips instanceof Error) throw ips;
+      const type = q.get('type') === 'A' ? 1 : 28;
+      const Answer = ips.filter((ip) => (ip.includes(':') ? 28 : 1) === type).map((data) => ({ name: q.get('name'), type, TTL: 60, data }));
+      return new Response(JSON.stringify({ Status: 0, Answer }), { headers: { 'content-type': 'application/dns-json' } });
+    }
     calls.push({ url, init });
     if (new URL(url).origin === 'https://challenges.cloudflare.com') {
       if (siteverify instanceof Error) throw siteverify;
@@ -823,6 +836,53 @@ describe('image proxy', () => {
       assert.equal(loop.status, 502);
       assert.equal(loop.json().error, 'image_refused');
       assert.equal(calls.length, 6, 'the first fetch plus five redirects, then it stops');
+    });
+
+    test('a public-looking name that resolves inward is refused before it is fetched', async () => {
+      const cookie = await validCookie();
+      serveImage();
+      const ok = await call(await signedPath(HOST + '/a.png'), { headers: { cookie } });
+      assert.equal(ok.status, 200);
+      assert.deepEqual(dnsCalls.sort(), ['images.example/A', 'images.example/AAAA']);
+
+      for (const ips of [['169.254.169.254'], ['10.0.0.5'], ['93.184.216.34', '127.0.0.1'], ['93.184.216.34', 'fd00::1'], ['::1'], []]) {
+        calls = [];
+        dns['images.example'] = ips;
+        const r = await call(await signedPath(HOST + '/p' + ips.length + ips.join('').replace(/\W/g, '') + '.png'), { headers: { cookie } });
+        assert.equal(r.status, 502, ips.join(','));
+        assert.equal(r.json().error, 'image_refused');
+        assert.equal(imageCalls().length, 0, 'the image host is never contacted');
+      }
+
+      dns['images.example'] = new Error('resolver down');
+      const down = await call(await signedPath(HOST + '/dns-down.png'), { headers: { cookie } });
+      assert.equal(down.status, 502);
+      assert.equal(down.json().error, 'image_unreachable');
+      assert.equal(cache.size, 1, 'only the first, public image was cached');
+    });
+
+    test('a redirect to a name that resolves inward is refused at that hop', async () => {
+      const cookie = await validCookie();
+      dns['rebind.example'] = ['192.168.1.1'];
+      origin = (url) =>
+        url === HOST + '/r.png'
+          ? new Response(null, { status: 302, headers: { location: 'https://rebind.example/x.png' } })
+          : new Response(PNG, { status: 200, headers: { 'content-type': 'image/png' } });
+      const r = await call(await signedPath(HOST + '/r.png'), { headers: { cookie } });
+      assert.equal(r.status, 502);
+      assert.equal(r.json().error, 'image_refused');
+      assert.deepEqual(calls.map((c) => c.url), [HOST + '/r.png']);
+      assert.ok(dnsCalls.includes('rebind.example/A'));
+    });
+
+    test('isPublicIPv6 accepts global unicast and nothing else', () => {
+      for (const ip of ['2606:4700::1111', '2a00:1450:4001:82a::200e', '2002:5db8:d822::1', '2606:2800:220:1:248:1893:25c8:1946']) {
+        assert.equal(isPublicIPv6(ip), true, ip);
+      }
+      for (const ip of ['::', '::1', 'fe80::1', 'fd00::1', 'fc00::1', 'ff02::1', '2001:db8::1', '2001::1', '::ffff:127.0.0.1',
+        '64:ff9b::7f00:1', '2002:7f00:1::1', '2002:a00:1::1', '1:2:3:4:5:6:7:8:9', '2606::4700::1', 'nonsense', '']) {
+        assert.equal(isPublicIPv6(ip), false, ip);
+      }
     });
 
     test('readCapped stops at the cap and joins what came before it', async () => {
