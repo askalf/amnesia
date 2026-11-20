@@ -55,3 +55,8 @@ zone_name = "amnesia.tax"
 # in the 14 days to 2026-10-14 was 20.3 ms; the cap stops a runaway loop from billing CPU.
 [limits]
 cpu_ms = 200
+
+# Workers Logs. Deploys apply this file's settings, so without this block each deploy turned the
+# dashboard's Logs switch back off (on for every Worker 2026-11-01, off again on 8 of 10 by 11/20).
+[observability]
+enabled = true
