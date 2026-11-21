@@ -146,8 +146,7 @@ systemctl restart cloudflared
 - **Deploy token.** `deploy-worker.yml` deploys with the repo secrets
   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, and the daily canary
   checks the token. Make it under My Profile → API Tokens → Create Custom
-  Token with exactly these
-  permissions and a one-year expiry:
+  Token with exactly these permissions and a one-year expiry:
   - Account → Workers Scripts → Edit and Account → Account Settings →
     Read, on this account only;
   - Zone → Workers Routes → Edit, on `amnesia.tax` only.
