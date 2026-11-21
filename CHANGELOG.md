@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from the page, and the CSP no longer allows its two origins.
 
 ### Fixed
+- **The deploy docs point at the right steps.** `infra/DEPLOY.md` step 4
+  now holds the deploy token's recipe (the three permissions the Worker
+  deploy needs, and how to renew it), which the canary's error names; it
+  named step 5, the front-end. The CORS note and the Turnstile front-end
+  step no longer describe an edge rule and a manual Pages deploy that are
+  gone.
 - **Back and Forward work.** Loading a `?q=` link or pressing Back re-pushed
   the search into history, so a link left a duplicate entry, Back wiped the
   forward stack, and repeated Back never left the site.

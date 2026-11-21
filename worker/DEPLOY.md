@@ -68,8 +68,8 @@ for Workers Scripts:Edit + Turnstile:Edit + Workers Routes:Edit + DNS:Edit).
 
 5. **Front-end.** `src/amnesia-search.html` loads the Turnstile script and sends
    the token. Its site key is the `TURNSTILE_SITE_KEY` constant in the page script; for
-   your own widget, replace it with your site key, then redeploy Pages
-   (`wrangler pages deploy …`, see ../infra/DEPLOY.md step 5).
+   your own widget, replace it with your site key and push to `main`; the
+   Pages Git integration rebuilds the site (../infra/DEPLOY.md step 5).
 
 ## Verify
 ```sh

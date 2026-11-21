@@ -10,7 +10,7 @@ Two moving parts:
 The front-end (`src/amnesia-search.html`, line ~945) calls
 `GET https://api.amnesia.tax/search?q=…&format=json`. Because that is a
 **cross-origin** request, `api.amnesia.tax` must return a CORS
-`Access-Control-Allow-Origin` header (added at the Cloudflare edge — step 4).
+`Access-Control-Allow-Origin` header (the API gate Worker adds it, step 4).
 
 ---
 
@@ -143,6 +143,18 @@ systemctl restart cloudflared
   without the gate's `x-amnesia-gate` header. CORS is the Worker's job (it
   names `ALLOWED_ORIGIN` on every answer); no Transform Rule is needed, and an
   old one setting `Access-Control-Allow-Origin` on `api.amnesia.tax` should go.
+- **Deploy token.** `deploy-worker.yml` deploys with the repo secrets
+  `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, and the daily canary
+  checks the token. Make it under My Profile → API Tokens → Create Custom
+  Token with exactly these permissions and a one-year expiry:
+  - Account → Workers Scripts → Edit and Account → Account Settings →
+    Read, on this account only;
+  - Zone → Workers Routes → Edit, on `amnesia.tax` only.
+
+  The canary fails once the token has under 14 days left. To renew it, edit
+  the token's expiry in place (Edit on the token): its value stays the same,
+  so the secret does not change. Turnstile, DNS and the WAF rules are set up
+  in the dashboard, not with this token.
 - **Rate limit.** WAF → Rate limiting rule on `api.amnesia.tax/search`,
   e.g. 30 req / 10s per IP → Block (this is the primary per-IP throttle;
   it sees the true client IP).

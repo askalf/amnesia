@@ -36,7 +36,7 @@ jobs:
           ok=$(echo "$resp" | jq -r '.success')
           status=$(echo "$resp" | jq -r '.result.status // "unknown"')
           if [ "$ok" != "true" ] || [ "$status" != "active" ]; then
-            echo "::error::CLOUDFLARE_API_TOKEN is NOT active (success=$ok status=$status) — deploys will fail. Re-issue per the recipe in infra/DEPLOY.md step 5 and update the repo secret."
+            echo "::error::CLOUDFLARE_API_TOKEN is NOT active (success=$ok status=$status) — deploys will fail. Make a new one per the recipe in infra/DEPLOY.md step 4 and update the repo secret."
             echo "$resp" | jq '.errors // empty'
             exit 1
           fi
@@ -47,7 +47,7 @@ jobs:
             days=$(( (exp_s - now_s) / 86400 ))
             echo "Token active; expires $exp (in ${days} days)."
             if [ "$days" -lt 14 ]; then
-              echo "::error::CLOUDFLARE_API_TOKEN expires in ${days} days — rotate it now, before deploys break."
+              echo "::error::CLOUDFLARE_API_TOKEN expires in ${days} days. Extend its expiry now (infra/DEPLOY.md step 4), before deploys break."
               exit 1
             fi
           else
