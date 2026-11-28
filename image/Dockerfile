@@ -1,4 +1,4 @@
-# amnesia, self-hosted: the amnesia.tax front end and SearXNG with amnesia's
+# amnesia, self-hosted: the amnesia.sprayberrylabs.com front end and SearXNG with amnesia's
 # tuning, one container, one origin.
 #
 #   docker run -d --name amnesia -p 127.0.0.1:8080:8080 ghcr.io/askalf/amnesia
@@ -12,9 +12,9 @@
 FROM searxng/searxng@sha256:1a143665b6445079d1cd5b6facdf599d22ac9c29698dd2e7d15eb9b5f5a854cc
 
 LABEL org.opencontainers.image.title="amnesia" \
-      org.opencontainers.image.description="Privacy meta-search: the amnesia.tax front end and SearXNG in one container. Search the web. Remember nothing." \
+      org.opencontainers.image.description="Privacy meta-search: the amnesia.sprayberrylabs.com front end and SearXNG in one container. Search the web. Remember nothing." \
       org.opencontainers.image.source="https://github.com/askalf/amnesia" \
-      org.opencontainers.image.url="https://amnesia.tax" \
+      org.opencontainers.image.url="https://amnesia.sprayberrylabs.com" \
       org.opencontainers.image.documentation="https://github.com/askalf/amnesia/blob/main/docs/self-host.md" \
       org.opencontainers.image.licenses="MIT AND AGPL-3.0-or-later"
 

@@ -1,13 +1,13 @@
 <div align="center">
 
-<a href="https://amnesia.tax"><img src=".github/readme/hero.jpg" alt="amnesia: Search the web. Remember nothing. ALF, a friendly violet alien, stands beside a glowing search bar whose trail of particles dissolves as it drifts away." width="100%"></a>
+<a href="https://amnesia.sprayberrylabs.com"><img src=".github/readme/hero.jpg" alt="amnesia: Search the web. Remember nothing. ALF, a friendly violet alien, stands beside a glowing search bar whose trail of particles dissolves as it drifts away." width="100%"></a>
 
 # `amnesia`
 
 ### Search the web. Remember nothing.<br/>A privacy search engine that shows its work: every claim here comes with a command you can run.
 
 <p>
-  <a href="https://amnesia.tax"><img src="https://img.shields.io/badge/live-amnesia.tax-8b5cf6" alt="Live at amnesia.tax"></a>
+  <a href="https://amnesia.sprayberrylabs.com"><img src="https://img.shields.io/badge/live-amnesia.sprayberrylabs.com-8b5cf6" alt="Live at amnesia.sprayberrylabs.com"></a>
   <a href="docs/self-host.md"><img src="https://img.shields.io/badge/docker-ghcr.io%2Faskalf%2Famnesia-8b5cf6?logo=docker&logoColor=white" alt="Self-host image: ghcr.io/askalf/amnesia"></a>
   <a href="https://github.com/askalf/amnesia/actions/workflows/ci.yml"><img src="https://github.com/askalf/amnesia/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://pitlane.askalf.org/"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fpitlane.askalf.org%2Fbadge.json" alt="CI measured"></a>
@@ -32,7 +32,9 @@ Most private search engines ask you to trust a privacy policy. Amnesia is built 
 
 ## Use it
 
-**[amnesia.tax](https://amnesia.tax)**. Nothing to install and nothing to sign up for. Web, images, news and videos, with autocomplete, pagination and dark and light themes. The page advertises itself over OpenSearch, so your browser can make it the default search engine.
+**[amnesia.sprayberrylabs.com](https://amnesia.sprayberrylabs.com)**. Nothing to install and nothing to sign up for. Web, images, news and videos, with autocomplete, pagination and dark and light themes. The page advertises itself over OpenSearch, so your browser can make it the default search engine.
+
+**If you used amnesia.tax.** This project no longer holds that domain, and nothing served there is amnesia. A browser that saved amnesia as a search engine before 2026-11-28 kept the old address and still sends your address-bar searches to it: remove that entry, open the address above, add it again, and check the hostname before you search.
 
 ## Run your own
 
@@ -44,39 +46,43 @@ Open <http://localhost:8080>. It's the same page and the same SearXNG tuning in 
 
 ## Check it yourself
 
-<img src=".github/readme/verify.svg" alt="Terminal, checked against the live endpoints: curl https://amnesia.tax/ returns 200; the API gate's /search with no session returns 401; search-origin.amnesia.tax/search returns 403 because the backend answers only to the gate; the site's headers contain unsafe-inline zero times." width="100%">
+<img src=".github/readme/verify.svg" alt="Terminal, checked against the live endpoints: curl https://amnesia.sprayberrylabs.com/ returns 200; the API gate's /search with no session returns 401; amnesia-origin.sprayberrylabs.com/search returns 403, a direct request to the backend being refused; the site's headers contain unsafe-inline zero times." width="100%">
 
 That picture is a recording of the live endpoints. [`scripts/readme/verify.mjs`](scripts/readme/verify.mjs) performs each request and refuses to write the image if any answer differs from the claim beside it. Run the same checks yourself:
 
 ```bash
-curl -so /dev/null -w '%{http_code}' https://amnesia.tax/                                 # 200
-curl -so /dev/null -w '%{http_code}' 'https://api.amnesia.tax/search?q=test&format=json'  # 401
-curl -so /dev/null -w '%{http_code}' 'https://search-origin.amnesia.tax/search?q=test'    # 403
-curl -sI https://amnesia.tax/ | grep -c unsafe-inline                                     # 0
+curl -so /dev/null -w '%{http_code}' https://amnesia.sprayberrylabs.com/                                 # 200
+curl -so /dev/null -w '%{http_code}' 'https://amnesia-api.sprayberrylabs.com/search?q=test&format=json'  # 401
+curl -so /dev/null -w '%{http_code}' 'https://amnesia-origin.sprayberrylabs.com/search?q=test'    # 403
+curl -so /dev/null -D - https://amnesia.sprayberrylabs.com/ | grep -ci unsafe-inline                     # 0
 ```
 
-The full list covers every guarantee, what enforces it, and how to verify it, including the two places where the live site still falls short of this repo: **[privacy model](docs/privacy-model.md#guarantees-and-how-to-check-them)**.
+The last command prints 0 for a page served with no CSP at all, too. The script is stricter than the command it shows: it writes the picture only when that same response is a 200 carrying one CSP whose `script-src` holds a complete SHA-256 hash, so `node scripts/readme/verify.mjs` is the guarded check.
+
+The full list covers every guarantee, what enforces it, and how to verify it, including where the live site falls short of this repo: **[privacy model](docs/privacy-model.md#guarantees-and-how-to-check-them)**.
 
 ## Who sees your query
 
 <img src=".github/readme/path.jpg" alt="The path of a query, left to right: your browser (no account, no history), then inside amnesia the API gate (Turnstile once, signed cookie), the origin lock (403 without the gate), searxng (hardened, stores nothing), a padlock, the VPN tunnel (WireGuard, no route around it), and finally the search engines (see a VPN IP, never yours). Pills below: no query log, no analytics, no accounts, MIT." width="100%">
 
+<sub>In the picture, <q>403 without the gate</q> is shorthand. The lock refuses every request that is not a subrequest from a Worker on the operator's Cloudflare zone, and the gate is the Worker there that calls the backend. The table has the exact rule.</sub>
+
 | On the path | Sees | Keeps |
 |---|---|---|
 | **Your browser** | everything | a theme preference, the session cookie, and your searches as `?q=` URLs in its own history (use a private window to skip that); nothing is sent to us about you |
 | **API gate** (Cloudflare Worker) | your IP and the query (Cloudflare terminates TLS) | an edge-cache entry keyed on the query text alone: 3 minutes for a search, 6 hours for autocomplete; never your IP, cookie or token ([one timing side channel](docs/privacy-model.md#who-sees-what)) |
-| **Origin lock** (WAF) | the request, only to refuse it | nothing: a 403 for anything without the gate's secret |
+| **Origin lock** (WAF) | the request, only to refuse it | nothing: a 403 for anything that is not a subrequest from a Worker on the operator's zone |
 | **SearXNG** | the query, with no client IP | nothing: no result cache, no access log |
 | **VPN** (ProtonVPN over WireGuard) | encrypted traffic | per ProtonVPN's policy |
 | **Search engines** | the query and a VPN exit IP | whatever they keep for an anonymous datacenter IP; never your IP |
-| **Image hosts** (image search only) | a Cloudflare address: the gate fetches each thumbnail for you, so never your IP or the query | whatever each host keeps |
+| **Image hosts** (image search only) | a connection from a Cloudflare address, not from yours, and the image's own URL as the engine supplied it: the gate fetches each thumbnail for you and does not separately send your query or a referrer ([what the gate controls and what it does not](docs/privacy-model.md#who-sees-what)) | whatever each host keeps |
 
 Amnesia doesn't protect against a global adversary watching both ends, a compromised Cloudflare account, or an engine fingerprinting you by what you search. The [privacy model](docs/privacy-model.md#who-sees-what) explains why, and what to do if you need that.
 
 ## How it's built
 
 - **A bot gate that isn't a CAPTCHA per search.** A Cloudflare Worker verifies one Turnstile solve and issues an HMAC-signed session cookie good for 6 hours, renewed while you keep searching up to 24 hours from the solve; searches in that window never see a challenge. The gate fails **closed** when its secrets are missing. [Architecture](docs/architecture.md)
-- **No way around the gate.** A WAF rule answers 403 to any request on the backend hostname without the gate's secret header, and zone rate limits cover `/search` on both hosts.
+- **No way in from outside.** A WAF rule answers 403 to any request on the backend hostname that is not a subrequest from a Worker on the site's own zone. The rule trusts the zone, not the gate itself: a Worker the operator runs there could reach the backend, and the gate is the one that does. A zone rate limit covers `/search` on the API host.
 - **One way out: the VPN.** SearXNG has no network interface of its own. It runs inside Gluetun's network namespace, and Gluetun drops all traffic while the tunnel is down, so a VPN outage takes search down rather than leaking your queries out the host's own IP. The container runs with no Linux capabilities, a read-only root, `no-new-privileges`, a memory cap and a digest-pinned image.
 - **One HTML file, CSP by hash.** About 50 KB with no framework and no build step, and fonts are self-hosted. The page makes no third-party request except the Turnstile challenge, image search included: the gate rewrites each thumbnail to a signed `/img` URL on itself and fetches the image, so `img-src` allows the gate and nothing else. The Content-Security-Policy allows the page's one script and one style by SHA-256 hash, generated from the HTML by [a script](scripts/csp-hashes.mjs) that CI re-runs on every change.
 - **Tested, fuzzed, scanned.** Zero-dependency `node:test` tests drive the Worker's real export (forged, expired and spliced cookies, the Turnstile hostname check, CORS, a cache key with no cookie, token or IP) and run the page's URL guards from its own bytes. Jazzer.js fuzzes the cookie boundary weekly and on PRs that touch it, and CodeQL runs on every push.

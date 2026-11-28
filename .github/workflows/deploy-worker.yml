@@ -1,7 +1,7 @@
 name: Deploy API-gate Worker
 
 # Deploys the amnesia-api-gate Cloudflare Worker (worker/) — the Turnstile gate
-# in front of api.amnesia.tax. The Pages front-end deploys through Cloudflare's
+# in front of amnesia-api.sprayberrylabs.com. The Pages front-end deploys through Cloudflare's
 # Git integration, not from here; this fires only when the worker changes (or
 # on manual dispatch), so an unrelated front-end push doesn't redeploy the gate.
 on:

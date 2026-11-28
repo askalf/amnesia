@@ -1,15 +1,16 @@
 # amnesia — deployment runbook
 
-Two moving parts:
+Three moving parts:
 
 | Piece | Where | Serves |
 |-------|-------|--------|
-| **Front-end** | Cloudflare Pages project `amnesia-site` (built from `main` by the Pages Git integration) | `https://amnesia.tax` |
-| **Backend** | This `infra/` stack on a Docker host at `/root/amnesia/` | `https://api.amnesia.tax` |
+| **Front-end** | Cloudflare Pages project `amnesia-site` (built from `main` by the Pages Git integration) | `https://amnesia.sprayberrylabs.com` |
+| **API gate** | Cloudflare Worker `amnesia-api-gate` ([`worker/`](../worker/)) | `https://amnesia-api.sprayberrylabs.com` |
+| **Backend** | This `infra/` stack on a Docker host at `/root/amnesia/` | `https://amnesia-origin.sprayberrylabs.com`, to Workers on the operator's zone (the gate is the one that calls it) |
 
 The front-end (`src/amnesia-search.html`, line ~945) calls
-`GET https://api.amnesia.tax/search?q=…&format=json`. Because that is a
-**cross-origin** request, `api.amnesia.tax` must return a CORS
+`GET https://amnesia-api.sprayberrylabs.com/search?q=…&format=json`. Because that is a
+**cross-origin** request, `amnesia-api.sprayberrylabs.com` must return a CORS
 `Access-Control-Allow-Origin` header (the API gate Worker adds it, step 4).
 
 ---
@@ -113,15 +114,15 @@ timeout: its timeout is every search's deadline.
 
 ## 2. DNS: both hostnames on the tunnel
 
-`api.amnesia.tax` is the public API, but the API gate Worker's route takes it
+`amnesia-api.sprayberrylabs.com` is the public API, but the API gate Worker's route takes it
 over (`worker/wrangler.toml`); it needs a proxied record only so the route has
 something to bind to. SearXNG itself is reached by the Worker at a second
-hostname, `search-origin.amnesia.tax` (why: [`worker/DEPLOY.md`](../worker/DEPLOY.md)).
+hostname, `amnesia-origin.sprayberrylabs.com` (why: [`worker/DEPLOY.md`](../worker/DEPLOY.md)).
 
 ```sh
 # Uses the cloudflared cert, not the scoped API token.
-cloudflared tunnel route dns <tunnel> api.amnesia.tax
-cloudflared tunnel route dns <tunnel> search-origin.amnesia.tax
+cloudflared tunnel route dns <tunnel> amnesia-api.sprayberrylabs.com
+cloudflared tunnel route dns <tunnel> amnesia-origin.sprayberrylabs.com
 ```
 
 ## 3. cloudflared ingress
@@ -139,32 +140,33 @@ systemctl restart cloudflared
 
 - **API gate Worker.** Deploy it and lock the origin to it, steps 3–4 of
   [`worker/DEPLOY.md`](../worker/DEPLOY.md): its three secrets, `wrangler
-  deploy`, and the WAF custom rule that blocks `search-origin.amnesia.tax`
-  without the gate's `x-amnesia-gate` header. CORS is the Worker's job (it
+  deploy`, and the WAF custom rule that blocks `amnesia-origin.sprayberrylabs.com`
+  for everything but a Worker on the zone. CORS is the Worker's job (it
   names `ALLOWED_ORIGIN` on every answer); no Transform Rule is needed, and an
-  old one setting `Access-Control-Allow-Origin` on `api.amnesia.tax` should go.
+  old one setting `Access-Control-Allow-Origin` on `amnesia-api.sprayberrylabs.com` should go.
 - **Deploy token.** `deploy-worker.yml` deploys with the repo secrets
   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, and the daily canary
   checks the token. Make it under My Profile → API Tokens → Create Custom
   Token with exactly these permissions and a one-year expiry:
   - Account → Workers Scripts → Edit and Account → Account Settings →
     Read, on this account only;
-  - Zone → Workers Routes → Edit, on `amnesia.tax` only.
+  - Zone → Workers Routes → Edit, on `sprayberrylabs.com` only.
 
   The canary fails once the token has under 14 days left. To renew it, edit
   the token's expiry in place (Edit on the token): its value stays the same,
   so the secret does not change. Turnstile, DNS and the WAF rules are set up
   in the dashboard, not with this token.
-- **Rate limit.** WAF → Rate limiting rule on `api.amnesia.tax/search`,
+- **Rate limit.** WAF → Rate limiting rule on `amnesia-api.sprayberrylabs.com/search`,
   e.g. 30 req / 10s per IP → Block (this is the primary per-IP throttle;
-  it sees the true client IP).
-- **Bot Fight Mode** ON for the zone.
+  it sees the true client IP). The hosted instance allows 6 per 10 seconds.
+- **Bot Fight Mode** is off on the hosted zone. The gate does not depend on
+  bot scores: Turnstile and the rate limit do that work.
 - Proxy (orange cloud) both records. They are, via the tunnel CNAMEs.
 
 ## 5. Front-end — Pages domain + deploy
 
-- Bind custom domain `amnesia.tax` (and `www`) to Pages project `amnesia-site`
-  in the account that holds the zone. Root uses CNAME flattening.
+- Bind custom domain `amnesia.sprayberrylabs.com` to Pages project `amnesia-site`
+  in the account that holds the zone.
 - Deploy: the Pages project's own Git integration builds every push to `main`
   (build command `bash scripts/build-site.sh`, output `deploy`); watch it in the
   Pages dashboard. No Actions workflow deploys the front-end. The repo's
@@ -174,11 +176,11 @@ systemctl restart cloudflared
 ## 6. Verify end-to-end
 
 ```sh
-curl -sI https://amnesia.tax                                                   # 200, HTML
-curl -s -o /dev/null -w '%{http_code}\n' https://api.amnesia.tax/healthz       # 200 (the Worker)
-curl -s -o /dev/null -w '%{http_code}\n' 'https://api.amnesia.tax/search?q=test&format=json'          # 401: no session
-curl -s -o /dev/null -w '%{http_code}\n' 'https://search-origin.amnesia.tax/search?q=test&format=json' # 403: origin lock
-# then load https://amnesia.tax in a browser and run a query
+curl -sI https://amnesia.sprayberrylabs.com                                                   # 200, HTML
+curl -s -o /dev/null -w '%{http_code}\n' https://amnesia-api.sprayberrylabs.com/healthz       # 200 (the Worker)
+curl -s -o /dev/null -w '%{http_code}\n' 'https://amnesia-api.sprayberrylabs.com/search?q=test&format=json'          # 401: no session
+curl -s -o /dev/null -w '%{http_code}\n' 'https://amnesia-origin.sprayberrylabs.com/search?q=test&format=json' # 403: origin lock
+# then load https://amnesia.sprayberrylabs.com in a browser and run a query
 ```
 
 ### why there is no SearXNG limiter

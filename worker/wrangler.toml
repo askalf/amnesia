@@ -1,4 +1,4 @@
-# amnesia API gate Worker — fronts api.amnesia.tax, verifies Turnstile, proxies SearXNG.
+# amnesia API gate Worker — fronts amnesia-api.sprayberrylabs.com, verifies Turnstile, proxies SearXNG.
 #
 # Deploy:  cd worker && wrangler deploy
 # Secrets (set once, NOT in this file):
@@ -6,7 +6,7 @@
 #   wrangler secret put ORIGIN_SECRET      # shared header to reach the origin
 #   wrangler secret put SESSION_SECRET     # HMAC key for the session cookie (openssl rand -hex 32)
 #
-# The route binds api.amnesia.tax/* to this Worker. That means api.amnesia.tax
+# The route binds amnesia-api.sprayberrylabs.com/* to this Worker. That means amnesia-api.sprayberrylabs.com
 # must be a DNS record in the zone (it is — proxied CNAME to the tunnel) AND the
 # Worker route takes precedence for matching requests. See worker/DEPLOY.md.
 
@@ -19,11 +19,11 @@ account_id = "dfdf9f7ec6fe9f816bd9cdc6f2469eca"
 
 # Public vars (non-secret)
 [vars]
-ALLOWED_ORIGIN = "https://amnesia.tax"
+ALLOWED_ORIGIN = "https://amnesia.sprayberrylabs.com"
 # The SearXNG origin the Worker proxies to — a SEPARATE tunnel hostname that is
 # NOT the public api host and NOT challenge-gated against the Worker. Provision
-# per worker/DEPLOY.md (cloudflared ingress search-origin.amnesia.tax -> :8081).
-ORIGIN_HOST = "https://search-origin.amnesia.tax"
+# per worker/DEPLOY.md (cloudflared ingress amnesia-origin.sprayberrylabs.com -> :8081).
+ORIGIN_HOST = "https://amnesia-origin.sprayberrylabs.com"
 # Session cookie lifetime in seconds (Turnstile solved once, then skipped).
 # 6h (was 30min): the cookie is just an HMAC-signed solve time and expiry,
 # with nothing user-identifying in it, so a longer life cuts re-challenges at
@@ -46,10 +46,10 @@ SESSION_MAX_AGE = "86400"
 # re-check the bridge's egress and update this line.
 BRIDGE_IPS = "178.104.181.103"
 
-# Route: take over api.amnesia.tax for the Worker.
+# Route: take over amnesia-api.sprayberrylabs.com for the Worker.
 [[routes]]
-pattern = "api.amnesia.tax/*"
-zone_name = "amnesia.tax"
+pattern = "amnesia-api.sprayberrylabs.com/*"
+zone_name = "sprayberrylabs.com"
 
 # CPU time per invocation, not wall time (waiting on the origin does not count). The worst seen
 # in the 14 days to 2026-10-14 was 20.3 ms; the cap stops a runaway loop from billing CPU.

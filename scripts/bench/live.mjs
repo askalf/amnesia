@@ -2,7 +2,7 @@
 // Page-load and search latency of the amnesia front end, measured in a real
 // browser the way a visitor meets it.
 //
-//   node scripts/bench/live.mjs [--site https://amnesia.tax] [--runs 3]
+//   node scripts/bench/live.mjs [--site https://amnesia.sprayberrylabs.com] [--runs 3]
 //                               [--cookie amns=VALUE] [--headed] [--json out.json]
 //
 // Each run, in a fresh browser profile:
@@ -17,7 +17,7 @@
 //
 // Turnstile is invisible but can refuse a headless browser; the search rows
 // then show 401/403. Pass --headed, or copy the `amns` cookie for
-// api.amnesia.tax from a browser that has searched and pass --cookie amns=...
+// amnesia-api.sprayberrylabs.com from a browser that has searched and pass --cookie amns=...
 // It also works against a self-host (--site http://localhost:8080), where
 // the page calls SearXNG on its own origin with no gate.
 //
@@ -32,7 +32,7 @@ import { parseArgs } from 'node:util';
 
 const { values: opt } = parseArgs({
   options: {
-    site: { type: 'string', default: 'https://amnesia.tax' },
+    site: { type: 'string', default: 'https://amnesia.sprayberrylabs.com' },
     runs: { type: 'string', default: '3' },
     cookie: { type: 'string' },
     headed: { type: 'boolean', default: false },
@@ -130,7 +130,7 @@ async function main() {
       const ctx = await browser.newContext();
       if (opt.cookie) {
         const [name, ...v] = opt.cookie.split('=');
-        const api = new URL(SITE).hostname === 'amnesia.tax' ? 'api.amnesia.tax' : new URL(SITE).hostname;
+        const api = new URL(SITE).hostname === 'amnesia.sprayberrylabs.com' ? 'amnesia-api.sprayberrylabs.com' : new URL(SITE).hostname;
         await ctx.addCookies([{ name, value: v.join('='), domain: api, path: '/', secure: true, sameSite: 'None' }]);
       }
       const page = await ctx.newPage();
