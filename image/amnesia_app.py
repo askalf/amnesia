@@ -12,7 +12,7 @@ Cloudflare:
     removed from the served HTML (the page skips Turnstile on same-origin
     anyway, see API_BASE in src/amnesia-search.html), and so is the
     <link rel=preconnect> to the hosted API gate, which would otherwise open
-    a connection to api.amnesia.tax on every page load;
+    a connection to amnesia-api.sprayberrylabs.com on every page load;
   - the Content-Security-Policy names no third-party origin, so even an
     unstripped loader could not run.
 
@@ -38,7 +38,7 @@ TURNSTILE_LOADER = re.compile(
 )
 
 API_PRECONNECT = re.compile(
-    r'[ \t]*<link\b[^>]*\brel="preconnect"[^>]*\bhref="https://api\.amnesia\.tax"[^>]*>[ \t]*\n?',
+    r'[ \t]*<link\b[^>]*\brel="preconnect"[^>]*\bhref="https://amnesia-api\.sprayberrylabs\.com"[^>]*>[ \t]*\n?',
     re.IGNORECASE,
 )
 
@@ -70,7 +70,7 @@ def _page():
         print("amnesia: expected one Turnstile loader in index.html, removed %d" % removed, flush=True)
     html, removed = API_PRECONNECT.subn("", html)
     if removed != 1:
-        print("amnesia: expected one api.amnesia.tax preconnect in index.html, removed %d" % removed, flush=True)
+        print("amnesia: expected one amnesia-api.sprayberrylabs.com preconnect in index.html, removed %d" % removed, flush=True)
     scripts = " ".join(_sha256(b) for b in _inline_blocks(html, "script"))
     styles = " ".join(_sha256(b) for b in _inline_blocks(html, "style"))
     csp = "; ".join([

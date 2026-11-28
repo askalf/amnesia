@@ -84,7 +84,7 @@ services:
     environment:
       # :? refuses to start with it unset, rather than signing with "".
       SEARXNG_SECRET: ${AMNESIA_SEARXNG_SECRET:?set AMNESIA_SEARXNG_SECRET in .env}
-      SEARXNG_BASE_URL: https://api.amnesia.tax/
+      SEARXNG_BASE_URL: https://amnesia-api.sprayberrylabs.com/
     volumes:
       - ./searxng:/etc/searxng:ro
       - searxng_cache:/var/cache/searxng

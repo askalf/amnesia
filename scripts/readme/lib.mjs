@@ -29,6 +29,36 @@ export function fontFaces({ bold = true } = {}) {
 
 export const FONT = "'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
+/**
+ * True when a Content-Security-Policy's script-src holds at least one complete SHA-256 hash
+ * source ('sha256-' and the 44 base64 or base64url characters of a 32-byte digest; the
+ * algorithm name in any case, as CSP reads it). A missing policy, a policy with no script-src
+ * and a cut-off hash are all false.
+ */
+export function hasHashedScriptSrc(csp) {
+  const directive = String(csp ?? '').split(';').map((d) => d.trim()).find((d) => /^script-src(\s|$)/i.test(d));
+  if (!directive) return false;
+  return directive.split(/\s+/).slice(1).some((source) => /^'sha256-[A-Za-z0-9+/_-]{43}='$/i.test(source));
+}
+
+/**
+ * The figure's last line: how many of the page's response headers hold 'unsafe-inline' (in any
+ * case: CSP keywords are case-insensitive), as a
+ * string, from ONE GET of `url` that is not followed if it redirects, so the status and the
+ * headers judged belong to the response that serves the page. Anything but a 200 whose CSP has a
+ * hashed script-src answers with a reason instead of a count, so the caller's comparison with
+ * '0' fails: a page served with no CSP at all would count zero too, and the picture would then
+ * show a restriction the browser never received.
+ */
+export async function unsafeInlineHeaders(url, fetchImpl = fetch) {
+  const res = await fetchImpl(url, { redirect: 'manual' });
+  await res.body?.cancel();
+  if (res.status !== 200 || !hasHashedScriptSrc(res.headers.get('content-security-policy'))) return `no hashed CSP (HTTP ${res.status})`;
+  let n = 0;
+  for (const [k, v] of res.headers) if (`${k}: ${v}`.toLowerCase().includes('unsafe-inline')) n++;
+  return String(n);
+}
+
 // Space Mono's advance width is 612/1000 em.
 export const CHAR_W = 0.612;
 

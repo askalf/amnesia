@@ -1,12 +1,12 @@
 # SearXNG settings — the SELF-HOST image (ghcr.io/askalf/amnesia).
 #
 # The hosted instance's tuning (infra/searxng/settings.yml) minus the parts
-# that only make sense on amnesia.tax:
+# that only make sense on amnesia.sprayberrylabs.com:
 #   - no outgoing proxy: the hosted instance egresses through ProtonVPN via
 #     gluetun; here engine traffic leaves from YOUR host's IP. To put a VPN
 #     under it, run the image inside a gluetun network namespace — the shape
 #     infra/docker-compose.vpn.yml uses.
-#   - the engines amnesia.tax disables only because they block datacenter/VPN
+#   - the engines amnesia.sprayberrylabs.com disables only because they block datacenter/VPN
 #     exit IPs (google, mojeek, qwant, startpage, yahoo, wolframalpha, google
 #     news, google scholar) are ON. From an IP they accept, they answer; from
 #     one they refuse, SearXNG suspends them (ban_time_on_fail) and moves on.

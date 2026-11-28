@@ -14,39 +14,34 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CHAR_W, OUT_DIR, THEMES, esc, svgDoc, windowChrome } from './lib.mjs';
+import { CHAR_W, OUT_DIR, THEMES, esc, svgDoc, unsafeInlineHeaders, windowChrome } from './lib.mjs';
 
 const status = async (url) => String((await fetch(url, { redirect: 'manual' })).status);
 
 const CHECKS = [
   {
-    cmd: "curl -so /dev/null -w '%{http_code}' https://amnesia.tax/",
-    run: () => status('https://amnesia.tax/'),
+    cmd: "curl -so /dev/null -w '%{http_code}' https://amnesia.sprayberrylabs.com/",
+    run: () => status('https://amnesia.sprayberrylabs.com/'),
     expect: '200',
     note: 'the site',
   },
   {
-    cmd: "curl -so /dev/null -w '%{http_code}' 'https://api.amnesia.tax/search?q=test&format=json'",
-    run: () => status('https://api.amnesia.tax/search?q=test&format=json'),
+    cmd: "curl -so /dev/null -w '%{http_code}' 'https://amnesia-api.sprayberrylabs.com/search?q=test&format=json'",
+    run: () => status('https://amnesia-api.sprayberrylabs.com/search?q=test&format=json'),
     expect: '401',
     note: 'no session, no search',
   },
   {
-    cmd: "curl -so /dev/null -w '%{http_code}' 'https://search-origin.amnesia.tax/search?q=test'",
-    run: () => status('https://search-origin.amnesia.tax/search?q=test'),
+    cmd: "curl -so /dev/null -w '%{http_code}' 'https://amnesia-origin.sprayberrylabs.com/search?q=test'",
+    run: () => status('https://amnesia-origin.sprayberrylabs.com/search?q=test'),
     expect: '403',
-    note: 'the backend answers only to the gate',
+    note: 'a direct request to the backend is refused',
   },
   {
-    cmd: 'curl -sI https://amnesia.tax/ | grep -c unsafe-inline',
-    run: async () => {
-      const res = await fetch('https://amnesia.tax/', { method: 'HEAD' });
-      let n = 0;
-      for (const [k, v] of res.headers) if (`${k}: ${v}`.includes('unsafe-inline')) n++;
-      return String(n);
-    },
+    cmd: 'curl -so /dev/null -D - https://amnesia.sprayberrylabs.com/ | grep -ci unsafe-inline',
+    run: () => unsafeInlineHeaders('https://amnesia.sprayberrylabs.com/'),
     expect: '0',
-    note: "CSP allows the page's own script by hash only",
+    note: 'no unsafe-inline in the headers the page is served with',
   },
 ];
 
@@ -121,7 +116,7 @@ function render(th) {
 
   return svgDoc({
     w: W, h: H, bold: false,
-    title: 'Check the claims yourself: four commands against the live amnesia.tax endpoints',
+    title: 'Check the claims yourself: four commands against the live amnesia.sprayberrylabs.com endpoints',
     desc: results.map((r) => `$ ${r.cmd} returns ${r.got} (${r.note})`).join('. ') + `. Checked ${stamp}.`,
     style: '.blink{animation:blink 1.1s steps(1) infinite}@keyframes blink{50%{opacity:0}}',
     body: windowChrome({ w: W, h: H, chromeH: CHROME, title: 'check it yourself', right: 'live', theme: th }) + '\n' + els.join('\n'),

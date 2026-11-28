@@ -6,6 +6,6 @@
   <ShortName>amnesia</ShortName>
   <Description>Search the web. Remember nothing.</Description>
   <InputEncoding>UTF-8</InputEncoding>
-  <Url type="text/html" method="get" template="https://amnesia.tax/?q={searchTerms}"/>
-  <moz:SearchForm>https://amnesia.tax/</moz:SearchForm>
+  <Url type="text/html" method="get" template="https://amnesia.sprayberrylabs.com/?q={searchTerms}"/>
+  <moz:SearchForm>https://amnesia.sprayberrylabs.com/</moz:SearchForm>
 </OpenSearchDescription>

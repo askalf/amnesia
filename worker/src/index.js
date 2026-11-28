@@ -1,5 +1,5 @@
 /**
- * amnesia API gate — Cloudflare Worker in front of api.amnesia.tax
+ * amnesia API gate — Cloudflare Worker in front of amnesia-api.sprayberrylabs.com
  *
  * Keeps the zone's bot/challenge protection ON while letting the static SPA's
  * cross-origin fetch() reach the SearXNG JSON API. A browser can't solve a CF
@@ -26,8 +26,8 @@
  * /img?u=<url>&s=<HMAC(SESSION_SECRET, "img:" + url)>, and /img fetches only
  * a URL it signed itself. The signature is what keeps /img from being an open
  * proxy: it serves the images real searches returned, nothing a caller makes
- * up. The host sees a Cloudflare address and the CF-Worker header naming this
- * zone, never the visitor. Only hosts on IMG_HOSTS, the image engines'
+ * up. The host gets a connection from a Cloudflare address, with the CF-Worker
+ * header naming this zone, not one from the visitor. Only hosts on IMG_HOSTS, the image engines'
  * own thumbnail CDNs, are fetched, on the first request and on every
  * redirect hop; any other value is blanked rather than passed through, so
  * the page never loads a thumbnail straight from its host. Only raster types are
@@ -64,17 +64,19 @@
  * time of the solve that started it, and renewal never extends it past
  * SESSION_MAX_AGE from then: one solve buys at most that long.
  *
- * Cross-site cookie: page origin is amnesia.tax, cookie host is api.amnesia.tax,
- * so the cookie is SameSite=None; Secure and the SPA fetches with
- * credentials:'include'. CORS therefore echoes the specific origin (never '*')
- * and sets Access-Control-Allow-Credentials: true.
+ * Cross-origin cookie: the page (amnesia.sprayberrylabs.com) and the gate
+ * (amnesia-api.sprayberrylabs.com) are different origins on one site. The cookie lives on
+ * the gate's host, so the SPA fetches with credentials:'include', and CORS therefore echoes
+ * the specific origin (never '*') and sets Access-Control-Allow-Credentials: true. The
+ * cookie is set SameSite=None; Secure, which also serves a deployment whose page and gate
+ * are on different sites.
  *
  * Bindings:
  *   TURNSTILE_SECRET (secret) — Turnstile secret key for siteverify
  *   SESSION_SECRET   (secret) — HMAC key signing the session cookie
  *   ORIGIN_SECRET    (secret) — shared header proving requests come from this Worker
  *   ORIGIN_HOST      (var)    — base URL of the SearXNG origin behind the tunnel
- *   ALLOWED_ORIGIN   (var)    — SPA origin allowed for CORS (https://amnesia.tax)
+ *   ALLOWED_ORIGIN   (var)    — SPA origin allowed for CORS (https://amnesia.sprayberrylabs.com)
  *   SESSION_TTL      (var)    — cookie lifetime in seconds (default 1800)
  *   SESSION_MAX_AGE  (var)    — cap on a renewed session, from its solve (default 86400)
  *   BRIDGE_IPS       (var):     comma-separated IPs let through without a session (default none)
@@ -100,14 +102,14 @@ export const IMG_MAX_BYTES = 8 * 1024 * 1024; // thumbnails are KBs; an original
 const IMG_CACHE_TTL = 86400; // 1d: an image at a given URL rarely changes
 const IMG_TIMEOUT_MS = 8000;
 const IMG_MAX_REDIRECTS = 5;
-const IMG_UA = "Mozilla/5.0 (compatible; amnesia-image-proxy/1.0; +https://amnesia.tax)";
+const IMG_UA = "Mozilla/5.0 (compatible; amnesia-image-proxy/1.0; +https://amnesia.sprayberrylabs.com)";
 // Raster only: an SVG is a document that can carry script.
 const IMG_TYPES = /^image\/(avif|webp|png|apng|jpeg|jpg|pjpeg|gif|bmp|x-icon|vnd\.microsoft\.icon)$/;
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    const allowedOrigin = env.ALLOWED_ORIGIN || "https://amnesia.tax";
+    const allowedOrigin = env.ALLOWED_ORIGIN || "https://amnesia.sprayberrylabs.com";
     const ttl = seconds(env.SESSION_TTL, 1800);
     const maxAge = seconds(env.SESSION_MAX_AGE, 86400);
     // The hostname a Turnstile token must have been solved on.
@@ -228,7 +230,7 @@ export default {
     }
 
     // --- Proxy to the SearXNG origin --------------------------------------
-    const originBase = env.ORIGIN_HOST || "https://search-origin.amnesia.tax";
+    const originBase = env.ORIGIN_HOST || "https://amnesia-origin.sprayberrylabs.com";
     // cf_turnstile_token is not in SEARCH_PARAMS, so it never reaches the origin.
     const params = searchParams(url.searchParams);
     const originUrl =
@@ -448,8 +450,8 @@ async function proxyImage(url, env, ctx, authorized, cors) {
     return new Response(hit.body, { status: 200, headers: imageHeaders(hit.headers.get("content-type")) });
   }
 
-  // Nothing of the visitor's goes upstream: no cookie, no client IP, no
-  // referrer. Just the URL and a user agent that says what is asking.
+  // Nothing of the visitor's is put in the request built here: no cookie, no
+  // client IP, no referrer. Just the URL and a user agent that says what is asking.
   // Redirects are followed here, at most IMG_MAX_REDIRECTS of them, and each
   // Location must pass imageTarget before it is fetched, so a signed URL can
   // only bounce the fetch to another listed image CDN.

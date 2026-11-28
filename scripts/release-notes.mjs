@@ -40,5 +40,5 @@ if (isMainModule(import.meta.url, process.argv[1])) {
     console.error(`release-notes: CHANGELOG.md has no section for ${version || '(no version given)'}`);
     process.exit(1);
   }
-  process.stdout.write(`Live at [amnesia.tax](https://amnesia.tax). Self-host: \`docker run -d -p 8080:8080 ghcr.io/askalf/amnesia\`.\n\n${notes}\n`);
+  process.stdout.write(`Live at [amnesia.sprayberrylabs.com](https://amnesia.sprayberrylabs.com). Self-host: \`docker run -d -p 127.0.0.1:8080:8080 ghcr.io/askalf/amnesia\`.\n\n${notes}\n`);
 }

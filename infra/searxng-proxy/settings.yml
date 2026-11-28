@@ -5,13 +5,13 @@
 # the live settings plus `outgoing.proxies`, because in that shape the proxy
 # setting is the only thing sending engine traffic through the VPN.
 
-# SearXNG settings — PUBLIC instance behind https://api.amnesia.tax
+# SearXNG settings — PUBLIC instance behind https://amnesia-api.sprayberrylabs.com
 #
 # Security/perf-tuned 2026-05-30. Authoritative config (regenerated clean to
 # drop a duplicate engine + stale comments).
 #
 # Abuse control is delegated to the Cloudflare edge + the Turnstile Worker that
-# fronts api.amnesia.tax — see worker/DEPLOY.md. The SearXNG `limiter` and
+# fronts amnesia-api.sprayberrylabs.com — see worker/DEPLOY.md. The SearXNG `limiter` and
 # `public_instance` are OFF: behind cloudflared SearXNG can't identify clients
 # from the forwarded IP chain and silently returns 0 results for proxied JSON
 # requests when they're on.
@@ -36,7 +36,7 @@ use_default_settings:
       - torch
 
 general:
-  instance_name: "amnesia.tax"
+  instance_name: "amnesia"
   privacypolicy_url: false
   donation_url: false
   contact_url: false
@@ -60,7 +60,7 @@ server:
   bind_address: "0.0.0.0"
   port: 8080
   secret_key: "${SEARXNG_SECRET}"
-  base_url: "https://api.amnesia.tax/"
+  base_url: "https://amnesia-api.sprayberrylabs.com/"
   limiter: false               # see header — Cloudflare/Worker is the gate
   public_instance: false
   image_proxy: true            # proxy result thumbnails so engines never see the user

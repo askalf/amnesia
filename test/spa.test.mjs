@@ -44,7 +44,7 @@ function functionSource(src, name) {
   throw new Error(`unbalanced braces in ${name}`);
 }
 
-const sandbox = vm.createContext({ URL, location: { origin: 'https://amnesia.tax' } });
+const sandbox = vm.createContext({ URL, location: { origin: 'https://amnesia.sprayberrylabs.com' } });
 const { safeUrl, escapeAttr } = vm.runInContext(
   `${functionSource(HTML, 'safeUrl')}\n${functionSource(HTML, 'escapeAttr')}\n({ safeUrl, escapeAttr })`,
   sandbox,
@@ -84,8 +84,8 @@ describe('safeUrl', () => {
 
   test('relative input resolves against the page origin (same-site, never script)', () => {
     // Pinned so a change to it is deliberate: the base argument makes
-    // relative input land on https://amnesia.tax.
-    assert.equal(safeUrl('/path'), 'https://amnesia.tax/path');
+    // relative input land on https://amnesia.sprayberrylabs.com.
+    assert.equal(safeUrl('/path'), 'https://amnesia.sprayberrylabs.com/path');
   });
 
   test('a missing value is dropped, not turned into a link to this site', () => {
@@ -188,7 +188,7 @@ describe('page contract', () => {
   test('the OpenSearch description exists, is copied into the build, and its template is a query the page runs on load', () => {
     assert.ok(refs.has('/opensearch.xml'), 'the page links /opensearch.xml');
     const xml = readFileSync(resolve(root, 'src/opensearch.xml'), 'utf8');
-    assert.match(xml, /<Url type="text\/html" method="get" template="https:\/\/amnesia\.tax\/\?q=\{searchTerms\}"\/>/);
+    assert.match(xml, /<Url type="text\/html" method="get" template="https:\/\/amnesia\.sprayberrylabs\.com\/\?q=\{searchTerms\}"\/>/);
     assert.match(HTML, /new URLSearchParams\(location\.search\)[\s\S]*params\.get\('q'\)/, 'the page reads ?q= on load');
     const build = readFileSync(resolve(root, 'scripts/build-site.sh'), 'utf8');
     assert.match(build, /^cp src\/opensearch\.xml deploy\/opensearch\.xml$/m, 'build-site.sh ships it (and not best-effort)');
@@ -217,7 +217,7 @@ function warmHarness({ sessionStatus, turnstileLoaded = true }) {
     },
   });
   vm.runInContext(
-    `const API_BASE = 'https://api.amnesia.tax';
+    `const API_BASE = 'https://amnesia-api.sprayberrylabs.com';
      let _warmPromise = null;
      let _tsReady = null;
      ${turnstileLoaded ? 'var turnstile = {};' : ''}
@@ -240,7 +240,7 @@ describe('warmSession', () => {
     const h = warmHarness({ sessionStatus: 200 });
     assert.equal(await h.warm(), true);
     assert.equal(h.fetches.length, 1);
-    assert.equal(h.fetches[0].url, 'https://api.amnesia.tax/session');
+    assert.equal(h.fetches[0].url, 'https://amnesia-api.sprayberrylabs.com/session');
     assert.equal(h.fetches[0].token, '', 'the cookie is tried without a token');
     assert.equal(h.fetches[0].credentials, 'include', 'the cookie is sent');
     assert.equal(h.solves(), 0);
@@ -266,7 +266,7 @@ describe('warmSession', () => {
 });
 
 test('the page preconnects to the API gate (credentialed, so no crossorigin) and loads Turnstile with the id turnstileReady waits on', () => {
-  assert.match(HTML, /<link rel="preconnect" href="https:\/\/api\.amnesia\.tax">/);
+  assert.match(HTML, /<link rel="preconnect" href="https:\/\/amnesia-api\.sprayberrylabs\.com">/);
   assert.match(HTML, /<script id="ts-loader" src="https:\/\/challenges\.cloudflare\.com\/turnstile\//);
 });
 

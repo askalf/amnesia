@@ -8,10 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Image hosts no longer see your IP.** The API gate rewrites each
+- **Your browser no longer connects to image hosts.** The API gate rewrites each
   thumbnail in a search answer to a signed `/img` URL on itself and fetches
   the image for you, so Flickr, Pinterest, Wikimedia and Google's thumbnail
-  CDN see a Cloudflare address instead of yours. `/img` serves only URLs it
+  CDN get a connection from a Cloudflare address instead of from yours (the
+  privacy model says what the gate controls about that request and what it
+  does not). `/img` serves only URLs it
   signed, only to a session cookie or a configured bridge IP, and only raster
   types. It fetches only from the image engines' own thumbnail CDNs, a
   fixed list of hostnames, on every redirect hop too. The site's CSP now allows images from the gate alone.
@@ -56,6 +58,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `SESSION_SECRET`.
 
 ### Changed
+- **The hosted instance moved to `amnesia.sprayberrylabs.com`.** The site, the
+  API gate (`amnesia-api.sprayberrylabs.com`) and the backend hostname
+  (`amnesia-origin.sprayberrylabs.com`) left the `amnesia.tax` domain, which
+  this project no longer holds: whatever is served there from now on is not
+  amnesia. The page and the SearXNG instance now call themselves amnesia. The
+  backend lock is a WAF rule on the Worker's zone (`cf.worker.upstream_zone`);
+  the gate still sends its `x-amnesia-gate` header, which the rule no longer
+  needs. **If your browser saved amnesia as a search engine, remove that entry
+  and add it again from the new address:** the saved one keeps the old domain
+  and would send your address-bar searches there.
 - `x-amnesia-cache` is sent to `BRIDGE_IPS` only, and the privacy model now
   states the shared edge cache's timing side channel.
 - The pre-1.1.0 `exp.sig` cookie format is no longer accepted (all such

@@ -3,34 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>amnesia.tax — Search</title>
+  <title>amnesia — Search</title>
   <meta name="description" content="Privacy-first aggregated search. 150+ engines, zero tracking, no AI, no memory. Built by Sprayberry Labs.">
   <meta name="robots" content="index, follow">
-  <meta property="og:title" content="amnesia.tax">
+  <meta property="og:title" content="amnesia">
   <meta property="og:description" content="Every engine at once. No AI. No memory.">
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://amnesia.tax">
-  <meta property="og:site_name" content="amnesia.tax">
-  <meta property="og:image" content="https://amnesia.tax/og.png?v=4">
+  <meta property="og:url" content="https://amnesia.sprayberrylabs.com">
+  <meta property="og:site_name" content="amnesia">
+  <meta property="og:image" content="https://amnesia.sprayberrylabs.com/og.png?v=4">
   <meta property="og:image:type" content="image/png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="amnesia.tax — aggregated search engine">
+  <meta property="og:image:alt" content="amnesia — aggregated search engine">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="amnesia.tax">
+  <meta name="twitter:title" content="amnesia">
   <meta name="twitter:description" content="Every engine at once. No AI. No memory.">
-  <meta name="twitter:image" content="https://amnesia.tax/og.png?v=4">
-  <meta name="twitter:image:alt" content="amnesia.tax — aggregated search engine">
+  <meta name="twitter:image" content="https://amnesia.sprayberrylabs.com/og.png?v=4">
+  <meta name="twitter:image:alt" content="amnesia — aggregated search engine">
   <meta name="theme-color" content="#fafafa" id="themeColor">
-  <link rel="search" type="application/opensearchdescription+xml" title="amnesia.tax" href="/opensearch.xml">
+  <link rel="search" type="application/opensearchdescription+xml" title="amnesia" href="/opensearch.xml">
   <!-- Space Mono is self-hosted (/fonts/, latin subset): no Google Fonts
        origins on a privacy site, and two fewer DNS+TLS handshakes on the
        critical render path. -->
   <link rel="preload" href="/fonts/space-mono-400.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/fonts/space-mono-700.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%230a0a0f'/><text x='50' y='68' text-anchor='middle' font-size='56' font-family='system-ui' font-weight='700' fill='%238b5cf6'>a</text></svg>">
-  <link rel="preconnect" href="https://api.amnesia.tax">
-  <!-- Cloudflare Turnstile: the API gate (api.amnesia.tax) requires a token so the
+  <link rel="preconnect" href="https://amnesia-api.sprayberrylabs.com">
+  <!-- Cloudflare Turnstile: the API gate (amnesia-api.sprayberrylabs.com) requires a token so the
        zone's bot protection can stay on while cross-origin fetch() still works. -->
   <script id="ts-loader" src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
   <style>
@@ -917,7 +917,7 @@
         <button data-cat="videos">Videos</button>
       </div>
       <div class="search-row">
-        <div class="logo" id="logo">amnesia.tax</div>
+        <div class="logo" id="logo">amnesia</div>
         <div class="search-wrap">
           <div class="search-box">
             <input type="text" id="q" placeholder="Search the web..." autofocus autocomplete="off" aria-autocomplete="list" aria-controls="acDropdown">
@@ -944,16 +944,16 @@
     let currentPage = 1;
     let currentQuery = '';
 
-    // API origin: the Turnstile-gated worker on the hosted site (amnesia.tax),
+    // API origin: the Turnstile-gated worker on the hosted site (amnesia.sprayberrylabs.com),
     // same-origin everywhere else — local dev and the self-host image
     // (ghcr.io/askalf/amnesia), where SearXNG answers /search on this origin.
     // An empty API_BASE also skips Turnstile entirely (see warmSession/apiGet).
-    // www.amnesia.tax 301s to the apex, so the apex is the only hosted name.
+    // The hosted site answers on that one name only.
     // MUST stay above the page-load warmSession() call below — as a `const` it sits
     // in its temporal dead zone until this line runs, so a lower declaration throws
     // "Cannot access 'API_BASE' before initialization" the moment warmSession() reads
     // it, halting the whole script. Regression guard: keep this here.
-    const API_BASE = window.location.hostname === 'amnesia.tax' ? 'https://api.amnesia.tax' : '';
+    const API_BASE = window.location.hostname === 'amnesia.sprayberrylabs.com' ? 'https://amnesia-api.sprayberrylabs.com' : '';
 
     // Theme toggle
     const themeToggle = document.getElementById('themeToggle');
@@ -1017,10 +1017,10 @@
     });
 
     // --- Cloudflare Turnstile -------------------------------------------------
-    // The API gate (api.amnesia.tax) requires a fresh Turnstile token per search
-    // so the zone's bot protection can stay on while cross-origin fetch() works.
-    // Site key is injected at deploy time (see worker/DEPLOY.md). The widget is
-    // rendered invisibly on demand and resolves a token.
+    // The API gate (amnesia-api.sprayberrylabs.com) wants a session: one Turnstile solve sets a
+    // signed cookie, and searches ride that cookie until it runs out. A token is solved again
+    // only when the gate answers 401. The site key is the constant below (worker/DEPLOY.md,
+    // step 5). The widget is rendered invisibly on demand and resolves a token.
     const TURNSTILE_SITE_KEY = '0x4AAAAAADaFA0frmSckU_jp';
     let _tsWidgetId = null;
 
@@ -1377,7 +1377,7 @@
       html += '<button data-action="page" data-page="' + (page + 1) + '" ' + (results.length === 0 ? 'disabled' : '') + '>next &rarr;</button>';
       html += '</div>';
 
-      html += '<div class="footer">amnesia.tax &mdash; no ads, funded by <a href="https://github.com/sponsors/askalf">sponsors</a> &middot; built by <a href="https://sprayberrylabs.com">sprayberrylabs</a></div>';
+      html += '<div class="footer">amnesia &mdash; no ads, funded by <a href="https://github.com/sponsors/askalf">sponsors</a> &middot; built by <a href="https://sprayberrylabs.com">sprayberrylabs</a></div>';
 
       content.innerHTML = html;
       window.scrollTo(0, 0);

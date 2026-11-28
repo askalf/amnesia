@@ -6,24 +6,24 @@ Cloudflare **Turnstile** widget; this Worker verifies the token server-side and
 only then proxies to SearXNG.
 
 ```
-browser (amnesia.tax SPA)
+browser (amnesia.sprayberrylabs.com SPA)
   │  solves Turnstile → token
-  │  GET https://api.amnesia.tax/search?q=…&format=json   (header cf-turnstile-token)
+  │  GET https://amnesia-api.sprayberrylabs.com/search?q=…&format=json   (header cf-turnstile-token)
   ▼
 Cloudflare edge  ── zone challenge layer stays ON for everything else ──
-  │  Worker route api.amnesia.tax/* → amnesia-api-gate Worker
+  │  Worker route amnesia-api.sprayberrylabs.com/* → amnesia-api-gate Worker
   ▼
 amnesia-api-gate Worker
   │  POST siteverify (TURNSTILE_SECRET)  → ok?
-  │  GET https://search-origin.amnesia.tax/search?… (header x-amnesia-gate: ORIGIN_SECRET)
+  │  GET https://amnesia-origin.sprayberrylabs.com/search?… (header x-amnesia-gate: ORIGIN_SECRET)
   ▼
-cloudflared ingress search-origin.amnesia.tax → http://localhost:8081 → amnesia-searxng
+cloudflared ingress amnesia-origin.sprayberrylabs.com → http://localhost:8081 → amnesia-searxng
 ```
 
-## Why a second hostname (`search-origin.amnesia.tax`)
-`api.amnesia.tax` is taken over by the Worker route, so the Worker can't proxy
-back to `api.amnesia.tax` (infinite loop). The Worker reaches SearXNG via a
-second proxied tunnel hostname, `search-origin.amnesia.tax`, that exists only for
+## Why a second hostname (`amnesia-origin.sprayberrylabs.com`)
+`amnesia-api.sprayberrylabs.com` is taken over by the Worker route, so the Worker can't proxy
+back to `amnesia-api.sprayberrylabs.com` (infinite loop). The Worker reaches SearXNG via a
+second proxied tunnel hostname, `amnesia-origin.sprayberrylabs.com`, that exists only for
 the Worker. Protect it so the public can't bypass Turnstile by hitting it
 directly — see step 4.
 
@@ -34,16 +34,16 @@ or deploy Workers. Do these in the Cloudflare dashboard (or with a token scoped
 for Workers Scripts:Edit + Turnstile:Edit + Workers Routes:Edit + DNS:Edit).
 
 1. **Turnstile widget.** Dashboard → Turnstile → Add site:
-   - Domain: `amnesia.tax`
+   - Domain: `amnesia.sprayberrylabs.com`
    - Mode: **Managed** (or Invisible for least friction)
    - Copy the **site key** (public, goes in the SPA) and **secret key**.
 
 2. **DNS for the origin hostname.** Add a **proxied** CNAME
-   `search-origin.amnesia.tax` → `<tunnel-id>.cfargotunnel.com`
+   `amnesia-origin.sprayberrylabs.com` → `<tunnel-id>.cfargotunnel.com`
    (same tunnel as api). Then on the backend host add the ingress rule to
    `/etc/cloudflared/config.yml` ABOVE the 404 catch-all and restart cloudflared:
    ```yaml
-     - hostname: search-origin.amnesia.tax
+     - hostname: amnesia-origin.sprayberrylabs.com
        service: http://localhost:8081
        originRequest:
          connectTimeout: 30s
@@ -57,14 +57,18 @@ for Workers Scripts:Edit + Turnstile:Edit + Workers Routes:Edit + DNS:Edit).
    wrangler secret put ORIGIN_SECRET      # any long random string (openssl rand -hex 24)
    wrangler deploy
    ```
-   The route in `wrangler.toml` binds `api.amnesia.tax/*` to the Worker. The
+   The route in `wrangler.toml` binds `amnesia-api.sprayberrylabs.com/*` to the Worker. The
    Worker answers every route, `/healthz` included, with 500 `misconfigured`
    until both `TURNSTILE_SECRET` and `SESSION_SECRET` are set.
 
 4. **Lock the origin hostname to the Worker.** So nobody bypasses Turnstile by
-   calling `search-origin.amnesia.tax` directly, add a WAF custom rule:
-   `(http.host eq "search-origin.amnesia.tax" and not http.request.headers["x-amnesia-gate"][0] eq "<ORIGIN_SECRET>")` → **Block**.
-   (Or a mTLS/Access service-token; the shared header is the simplest.)
+   calling `amnesia-origin.sprayberrylabs.com` directly, add a WAF custom rule:
+   `(http.host eq "amnesia-origin.sprayberrylabs.com" and cf.worker.upstream_zone ne "sprayberrylabs.com")` → **Block**.
+   `cf.worker.upstream_zone` holds the zone of the Worker a subrequest came from and is
+   empty for every other request, so the rule passes only subrequests from a Worker on
+   this zone: keep the zone's Workers to ones you trust. The Worker also sends
+   `x-amnesia-gate: <ORIGIN_SECRET>`; a rule can test that header as well
+   (`http.request.headers["x-amnesia-gate"][0]`), which puts the secret in the rule.
 
 5. **Front-end.** `src/amnesia-search.html` loads the Turnstile script and sends
    the token. Its site key is the `TURNSTILE_SITE_KEY` constant in the page script; for
@@ -74,15 +78,8 @@ for Workers Scripts:Edit + Turnstile:Edit + Workers Routes:Edit + DNS:Edit).
 ## Verify
 ```sh
 # preflight + health (no token needed)
-curl -s -o /dev/null -w '%{http_code}\n' https://api.amnesia.tax/healthz       # 200
+curl -s -o /dev/null -w '%{http_code}\n' https://amnesia-api.sprayberrylabs.com/healthz       # 200
 # search WITHOUT token must be refused now:
-curl -s -o /dev/null -w '%{http_code}\n' 'https://api.amnesia.tax/search?q=x&format=json'  # 401 turnstile_required
-# then load https://amnesia.tax, run a query in the browser → results.
+curl -s -o /dev/null -w '%{http_code}\n' 'https://amnesia-api.sprayberrylabs.com/search?q=x&format=json'  # 401 turnstile_required
+# then load https://amnesia.sprayberrylabs.com, run a query in the browser → results.
 ```
-
-## Note on the interim Configuration Rule
-If you instead want search live immediately without the Worker, the one-liner
-fallback is a Configuration Rule on `http.host eq "api.amnesia.tax"` setting
-`security_level: essentially_off` + `bic: off` (abuse still covered by the
-rate-limit rule). That path weakens the zone's protection; the Turnstile gate
-here is the stronger option.

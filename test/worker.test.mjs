@@ -10,8 +10,8 @@ import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import worker, { buildCookie, hmac, verifySession, sessionTimes, COOKIE_NAME, imageTarget, imageSignature, proxifyImages, readCapped, IMG_MAX_BYTES } from '../worker/src/index.js';
 
-const SITE = 'https://amnesia.tax';
-const API = 'https://api.amnesia.tax';
+const SITE = 'https://amnesia.sprayberrylabs.com';
+const API = 'https://amnesia-api.sprayberrylabs.com';
 const ORIGIN = 'https://origin.test';
 const ENV = Object.freeze({
   SESSION_SECRET: 'test-session-secret',
@@ -35,7 +35,7 @@ beforeEach(() => {
   calls = [];
   cache = new Map();
   pending = [];
-  siteverify = { success: true, hostname: 'amnesia.tax' };
+  siteverify = { success: true, hostname: 'amnesia.sprayberrylabs.com' };
   origin = () =>
     new Response(JSON.stringify({ query: 'q', results: [{ url: 'https://example.com/' }] }), {
       status: 200,
@@ -115,7 +115,7 @@ describe('fails closed without its secrets', () => {
   });
 
   test('an ALLOWED_ORIGIN with no hostname to bind tokens to → 500', async () => {
-    const r = await call('/search?q=x', { env: { ...ENV, ALLOWED_ORIGIN: 'amnesia.tax' }, headers: { 'cf-turnstile-token': 't' } });
+    const r = await call('/search?q=x', { env: { ...ENV, ALLOWED_ORIGIN: 'amnesia.sprayberrylabs.com' }, headers: { 'cf-turnstile-token': 't' } });
     assert.equal(r.status, 500);
     assert.equal(calls.length, 0);
   });
@@ -574,7 +574,7 @@ describe('image proxy', () => {
       assert.equal(imageTarget('  https://i.pinimg.com/a b.jpg '), 'https://i.pinimg.com/a%20b.jpg');
       const refused = [
         'javascript:alert(1)', 'data:image/png;base64,AAAA', '/image_proxy?url=x', 'a.jpg', '', '   ',
-        'https://user:pw@i.pinimg.com/a.jpg', 'https://i.pinimg.com:8443/a.jpg', 'https://amnesia.tax/x.png', 'https://search-origin.amnesia.tax/search',
+        'https://user:pw@i.pinimg.com/a.jpg', 'https://i.pinimg.com:8443/a.jpg', 'https://amnesia.sprayberrylabs.com/x.png', 'https://amnesia-origin.sprayberrylabs.com/search',
         'https://API.AMNESIA.TAX./img', null, undefined, 42, {},
       ];
       for (const bad of refused) assert.equal(imageTarget(bad), null, String(bad));
@@ -617,7 +617,7 @@ describe('image proxy', () => {
         { url: 'https://a.example/', thumbnail_src: 'https://i.pinimg.com/a.jpg', img_src: 'https://upload.wikimedia.org/a.jpg' },
         { url: 'https://b.example/', thumbnail: '//i.pinimg.com/b.jpg' },
         { url: 'https://c.example/', thumbnail_src: 'javascript:alert(1)', img_src: 'https://upload.wikimedia.org/c.jpg' },
-        { url: 'https://d.example/', img_src: 'https://api.amnesia.tax/session' },
+        { url: 'https://d.example/', img_src: 'https://amnesia-api.sprayberrylabs.com/session' },
         { url: 'https://e.example/', title: 'no image' },
       ];
       origin = jsonOrigin({ query: 'cats', results });
@@ -750,7 +750,7 @@ describe('image proxy', () => {
         '/img?u=' + encodeURIComponent(HOST + '/a.png') + '&s=' + flipped,
         await signedPath(HOST + '/a.png', 'another-secret'),
         await selfSigned('//live.staticflickr.com/a.png'),
-        await selfSigned('https://search-origin.amnesia.tax/search?q=x'),
+        await selfSigned('https://amnesia-origin.sprayberrylabs.com/search?q=x'),
       ];
       for (const p of paths) {
         assert.equal((await call(p, { headers: { cookie } })).status, 404, p);
@@ -829,7 +829,7 @@ describe('image proxy', () => {
       };
       for (const location of [
         'http://127.0.0.1/x.png', 'http://169.254.169.254/latest/meta-data/', 'http://[::1]/x.png',
-        'http://localhost/x.png', 'https://search-origin.amnesia.tax/search?q=x', 'javascript:alert(1)', '',
+        'http://localhost/x.png', 'https://amnesia-origin.sprayberrylabs.com/search?q=x', 'javascript:alert(1)', '',
       ]) {
         calls = [];
         redirectTo(location);
