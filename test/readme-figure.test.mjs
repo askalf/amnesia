@@ -62,6 +62,14 @@ test('a list of policies is refused, wherever its hash sits', () => {
   assert.equal(hasHashedScriptSrc(`script-src 'self' ${HASH}, default-src 'self'`), false, 'a list is not read as one policy');
 });
 
+test('only ASCII whitespace separates, as in a browser: a no-break space does not', () => {
+  const NBSP = String.fromCharCode(0xa0);
+  assert.equal(hasHashedScriptSrc(`script-src${NBSP}${HASH}`), false, 'not a script-src directive at all');
+  assert.equal(hasHashedScriptSrc(`script-src 'self'${NBSP}${HASH}`), false, 'one malformed source, not two');
+  assert.equal(hasHashedScriptSrc(`default-src 'self';${NBSP}script-src ${HASH}`), false, 'the directive name starts with the no-break space');
+  assert.equal(hasHashedScriptSrc(`default-src 'self';\t script-src\t${HASH}`), true, 'tabs and spaces do separate');
+});
+
 test('within one policy the first script-src decides, as in a browser', () => {
   assert.equal(hasHashedScriptSrc(`script-src 'self'; script-src 'self' ${HASH}`), false);
   assert.equal(hasHashedScriptSrc(`script-src 'self' ${HASH}; script-src 'self'`), true);

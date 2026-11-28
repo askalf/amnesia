@@ -42,10 +42,15 @@ export function hasHashedScriptSrc(csp) {
   // says nothing about another policy's script-src. This repo deploys one policy; a list is refused
   // outright rather than read as if it were one.
   if (text.includes(',')) return false;
+  // CSP separates on ASCII whitespace only (tab, line feed, form feed, carriage return, space).
+  // JavaScript's \s and trim() also take a no-break space, which a browser does not, so a policy
+  // pasted with one would read as hashed here and as something else there.
+  const WS = '[\\t\\n\\f\\r ]';
+  const edges = new RegExp(`^${WS}+|${WS}+$`, 'g');
   // The first script-src is the one a browser applies; a later duplicate is ignored.
-  const directive = text.split(';').map((d) => d.trim()).find((d) => /^script-src(\s|$)/i.test(d));
+  const directive = text.split(';').map((d) => d.replace(edges, '')).find((d) => new RegExp(`^script-src(${WS}|$)`, 'i').test(d));
   if (!directive) return false;
-  return directive.split(/\s+/).slice(1).some((source) => /^'sha256-[A-Za-z0-9+/_-]{43}='$/i.test(source));
+  return directive.split(new RegExp(`${WS}+`)).slice(1).some((source) => /^'sha256-[A-Za-z0-9+/_-]{43}='$/i.test(source));
 }
 
 /**
