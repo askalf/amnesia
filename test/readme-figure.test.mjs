@@ -1,6 +1,6 @@
 // The README figure's CSP check (scripts/readme/lib.mjs): verify.mjs writes the picture only when
-// one GET of the page, not followed if it redirects, is a 200 whose script-src holds a complete
-// hash, because a page with no CSP at all also has zero 'unsafe-inline'.
+// one GET of the page, not followed if it redirects, is a 200 carrying one CSP whose script-src
+// holds a complete hash, because a page with no CSP at all also has zero 'unsafe-inline'.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -54,6 +54,25 @@ test('the figure asks for the page once, with a GET that does not follow redirec
   assert.equal(calls[0].url, PAGE);
   assert.equal(calls[0].init.redirect, 'manual');
   assert.ok(calls[0].init.method === undefined || calls[0].init.method === 'GET', 'a GET, the request that serves the page');
+});
+
+test('a list of policies is refused, wherever its hash sits', () => {
+  assert.equal(hasHashedScriptSrc(`script-src 'self', style-src 'self' ${HASH}`), false, 'a style hash in a second policy is not a script hash');
+  assert.equal(hasHashedScriptSrc(`script-src 'self', script-src 'self' ${HASH}`), false, 'the unhashed policy is enforced too');
+  assert.equal(hasHashedScriptSrc(`script-src 'self' ${HASH}, default-src 'self'`), false, 'a list is not read as one policy');
+});
+
+test('within one policy the first script-src decides, as in a browser', () => {
+  assert.equal(hasHashedScriptSrc(`script-src 'self'; script-src 'self' ${HASH}`), false);
+  assert.equal(hasHashedScriptSrc(`script-src 'self' ${HASH}; script-src 'self'`), true);
+});
+
+test('two CSP headers on a 200 are refused instead of counted as zero', async () => {
+  const headers = new Headers();
+  headers.append('content-security-policy', "script-src 'self'");
+  headers.append('content-security-policy', `style-src 'self' ${HASH}`);
+  assert.match(headers.get('content-security-policy'), /,/, 'fetch hands both policies over as one comma-separated value');
+  assert.equal(await unsafeInlineHeaders(PAGE, stubFetch(200, headers).fetchImpl), 'no hashed CSP (HTTP 200)');
 });
 
 test('a 200 with the deployed policy counts zero', async () => {

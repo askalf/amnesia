@@ -57,7 +57,7 @@ curl -so /dev/null -w '%{http_code}' 'https://amnesia-origin.sprayberrylabs.com/
 curl -so /dev/null -D - https://amnesia.sprayberrylabs.com/ | grep -ci unsafe-inline                     # 0
 ```
 
-The last command prints 0 for a page served with no CSP at all, too. The script is stricter than the command it shows: it writes the picture only when that same response is a 200 whose `script-src` holds a complete SHA-256 hash, so `node scripts/readme/verify.mjs` is the guarded check.
+The last command prints 0 for a page served with no CSP at all, too. The script is stricter than the command it shows: it writes the picture only when that same response is a 200 carrying one CSP whose `script-src` holds a complete SHA-256 hash, so `node scripts/readme/verify.mjs` is the guarded check.
 
 The full list covers every guarantee, what enforces it, and how to verify it, including where the live site falls short of this repo: **[privacy model](docs/privacy-model.md#guarantees-and-how-to-check-them)**.
 

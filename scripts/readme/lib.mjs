@@ -33,10 +33,17 @@ export const FONT = "'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas
  * True when a Content-Security-Policy's script-src holds at least one complete SHA-256 hash
  * source ('sha256-' and the 44 base64 or base64url characters of a 32-byte digest; the
  * algorithm name in any case, as CSP reads it). A missing policy, a policy with no script-src
- * and a cut-off hash are all false.
+ * and a cut-off hash are all false, and so is a list of several policies.
  */
 export function hasHashedScriptSrc(csp) {
-  const directive = String(csp ?? '').split(';').map((d) => d.trim()).find((d) => /^script-src(\s|$)/i.test(d));
+  const text = String(csp ?? '');
+  // Several policies reach here as one comma-separated value: two CSP headers, which fetch joins,
+  // or one header that lists them. A browser enforces each on its own, so a hash in one policy
+  // says nothing about another policy's script-src. This repo deploys one policy; a list is refused
+  // outright rather than read as if it were one.
+  if (text.includes(',')) return false;
+  // The first script-src is the one a browser applies; a later duplicate is ignored.
+  const directive = text.split(';').map((d) => d.trim()).find((d) => /^script-src(\s|$)/i.test(d));
   if (!directive) return false;
   return directive.split(/\s+/).slice(1).some((source) => /^'sha256-[A-Za-z0-9+/_-]{43}='$/i.test(source));
 }
@@ -45,8 +52,8 @@ export function hasHashedScriptSrc(csp) {
  * The figure's last line: how many of the page's response headers hold 'unsafe-inline' (in any
  * case: CSP keywords are case-insensitive), as a
  * string, from ONE GET of `url` that is not followed if it redirects, so the status and the
- * headers judged belong to the response that serves the page. Anything but a 200 whose CSP has a
- * hashed script-src answers with a reason instead of a count, so the caller's comparison with
+ * headers judged belong to the response that serves the page. Anything but a 200 carrying one CSP
+ * whose script-src is hashed answers with a reason instead of a count, so the caller's comparison with
  * '0' fails: a page served with no CSP at all would count zero too, and the picture would then
  * show a restriction the browser never received.
  */
